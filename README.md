@@ -13,16 +13,48 @@ A tool for converting JSON schema files to type definitions in various programmi
 
 ## Installation
 
-This project is a Python package. You can install it in editable mode for development:
+### Quick Install (Recommended)
+
+Install with curl:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/LongStoryMedia/schema2code/main/install.sh | bash
+```
+
+Or with wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/LongStoryMedia/schema2code/main/install.sh | bash
+```
+
+This will:
+
+1. Create a `.schema2code` directory in your home folder
+2. Clone or download the repository
+3. Set up a virtual environment
+4. Install the package and add it to your PATH
+
+### Manual Installation
+
+For development or manual installation:
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/LongStoryMedia/schema2code.git
+cd schema2code
+```
+
+1. Run the build script:
+
+```bash
+./build.sh
+```
+
+Or install directly with pip for development:
 
 ```bash
 pip install -e .
-```
-
-Or, to use the CLI directly:
-
-```bash
-python -m src.main [schema_file] --language [language] --output [output_file] [options]
 ```
 
 ## Usage
