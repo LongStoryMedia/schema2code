@@ -1,3 +1,4 @@
+
 # schema2code
 
 A tool for converting JSON schema files to type definitions in various programming languages.
@@ -12,27 +13,31 @@ A tool for converting JSON schema files to type definitions in various programmi
 
 ## Installation
 
-```bash
-# Make the script executable
-chmod +x schema2code.py
+This project is a Python package. You can install it in editable mode for development:
 
-# Optional: Create a symbolic link to make it available system-wide
-sudo ln -s "$(pwd)/schema2code.py" /usr/local/bin/schema2code
+```bash
+pip install -e .
+```
+
+Or, to use the CLI directly:
+
+```bash
+python -m src.main [schema_file] --language [language] --output [output_file] [options]
 ```
 
 ## Usage
 
 ```bash
-python schema2code.py [schema_file] --language [language] --output [output_file] [options]
+python -m src.main [schema_file] --language [language] --output [output_file] [options]
 ```
 
-### Required arguments:
+### Required arguments
 
-- `schema_file`: Path to the JSON schema file
+- `schema_file`: Path to the JSON or YAML schema file
 - `--language`, `-l`: Target language (`go`, `python`, `typescript`, `csharp`, `dotnet`, `proto`, `protobuf`)
 - `--output`, `-o`: Output file path
 
-### Optional arguments:
+### Optional arguments
 
 - `--mode`: `create` (default) or `append` - Whether to create a new file or append to existing
 - `--no-create`: Don't create the file if it doesn't exist
@@ -45,36 +50,64 @@ python schema2code.py [schema_file] --language [language] --output [output_file]
 ## Examples
 
 Generate Go types:
+
 ```bash
-python schema2code.py schema.json --language go --output models.go --package models
+python -m src.main schema.json --language go --output models.go --package models
 ```
 
 Generate Python types with Pydantic:
+
 ```bash
-python schema2code.py schema.json --language python --output models.py
+python -m src.main schema.json --language python --output models.py
 ```
 
 Generate Python types with dataclasses:
+
 ```bash
-python schema2code.py schema.json --language python --output models.py --no-pydantic
+python -m src.main schema.json --language python --output models.py --no-pydantic
 ```
 
 Generate TypeScript interfaces:
+
 ```bash
-python schema2code.py schema.json --language typescript --output models.ts
+python -m src.main schema.json --language typescript --output models.ts
 ```
 
 Generate C# classes:
+
 ```bash
-python schema2code.py schema.json --language csharp --output Models.cs --namespace MyApp.Models
+python -m src.main schema.json --language csharp --output Models.cs --namespace MyApp.Models
 ```
 
 Generate Protocol Buffer message definitions:
+
 ```bash
-python schema2code.py schema.json --language proto --output message.proto --package mypackage --go-package "example/mypackage"
+python -m src.main schema.json --language proto --output message.proto --package mypackage --go-package "example/mypackage"
 ```
 
 Append to existing file:
+
 ```bash
-python schema2code.py schema.json --language go --output models.go --mode append
+python -m src.main schema.json --language go --output models.go --mode append
 ```
+
+## Testing
+
+To test the command line tool across all sample schemas and supported languages, run:
+
+```bash
+./test_command_line.sh
+```
+
+This script will generate code for all schemas in `sample_schemas/` and output to `sample_code/`, reporting any errors or issues.
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork this repository and create a new branch for your feature or bugfix.
+2. Make your changes and add tests as appropriate.
+3. Run `./test_command_line.sh` to ensure all code generation works as expected.
+4. Submit a pull request with a clear description of your changes.
+
+Please follow PEP8 style for Python code and keep code generation logic modular and well-documented.
