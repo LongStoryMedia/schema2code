@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # test_command_line.sh
 # This script calls the schema2code command line tool for each schema file in each language
 # to test the actual command line functionality
@@ -19,29 +19,16 @@ echo -e "${YELLOW}Clearing output directory: $OUTPUT_DIR${NC}"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-# Language settings
-declare -A LANGUAGES
-LANGUAGES=(
-    ["dotnet"]="csharp"
-    ["go"]="go"
-    ["protos"]="proto"
-    ["python"]="python"
-    ["typescript"]="typescript"
-)
+# Language settings - use parallel arrays instead of associative arrays
+LANG_DIRS=("dotnet" "go" "protos" "python" "typescript")
+LANG_NAMES=("csharp" "go" "proto" "python" "typescript")
 
 # Language-specific options
-declare -A LANGUAGE_OPTIONS
-LANGUAGE_OPTIONS=(
-    ["dotnet"]="--namespace SchemaTypes"
-    ["go"]="--package schema"
-    ["protos"]="--package schema"
-    ["python"]=""
-    ["typescript"]=""
-)
+LANG_OPTIONS=("--namespace SchemaTypes" "--package schema" "--package schema" "" "")
 
 # Make sure output directories exist
-for lang_dir in "${!LANGUAGES[@]}"; do
-    mkdir -p "$OUTPUT_DIR/$lang_dir"
+for i in "${!LANG_DIRS[@]}"; do
+    mkdir -p "$OUTPUT_DIR/${LANG_DIRS[$i]}"
 done
 
 # Counter for statistics
@@ -54,17 +41,21 @@ echo -e "${BLUE}===================================================${NC}"
 echo -e "${BLUE}Testing schema2code command line for multiple schemas${NC}"
 echo -e "${BLUE}===================================================${NC}"
 
-# Get list of schema files
-mapfile -t SCHEMA_FILES < <(find "$SCHEMA_DIR" -type f -name "*.yaml" -o -name "*.json" | sort)
+# Get list of schema files (macOS compatible version)
+SCHEMA_FILES=()
+while IFS= read -r line; do
+    SCHEMA_FILES+=("$line")
+done < <(find "$SCHEMA_DIR" -type f \( -name "*.yaml" -o -name "*.json" \) | sort)
 TOTAL_SCHEMAS=${#SCHEMA_FILES[@]}
 
 echo -e "${YELLOW}Found ${TOTAL_SCHEMAS} schema files to process${NC}"
 echo ""
 
 # Process each language
-for lang_dir in "${!LANGUAGES[@]}"; do
-    lang_name=${LANGUAGES[$lang_dir]}
-    options=${LANGUAGE_OPTIONS[$lang_dir]}
+for i in "${!LANG_DIRS[@]}"; do
+    lang_dir=${LANG_DIRS[$i]}
+    lang_name=${LANG_NAMES[$i]}
+    options=${LANG_OPTIONS[$i]}
     
     echo -e "${BLUE}=== Processing $lang_name files (output to $OUTPUT_DIR/$lang_dir/) ===${NC}"
     successful=0

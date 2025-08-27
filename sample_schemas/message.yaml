@@ -33,6 +33,3 @@ required:
   - role
   - content
   - conversation_id
-definitions:
-  Content:
-    $ref: message_content.yaml

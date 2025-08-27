@@ -136,7 +136,6 @@ def _generate_single_schema(
             schema_file,
             ref_resolver,
             is_main=is_main,
-            referenced_by=referenced_by,
         )
     elif language == "typescript":
         return TypeScriptGenerator.generate(

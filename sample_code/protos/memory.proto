@@ -7,21 +7,14 @@ package schema;
 
 import "google/protobuf/timestamp.proto";
 import "memory_fragment.proto";
+import "memory_source.proto";
 
 // Memory represents a grouped memory for a user, which can be a summary or a question-answer pair
 message Memory {
   // Fragments of memory content
   repeated MemoryFragment fragments = 1;
-  // Source type of the memory
-  enum SourceEnum {
-    SOURCEENUM_UNSPECIFIED = 0;
-    SUMMARY = 1;
-    MESSAGE = 2;
-  }
-  
-
-  // Source type of the memory
-  SourceEnum source = 2;
+  // Source of the memory
+  MemorySource source = 2;
   // Timestamp of when the memory was created
   google.protobuf.Timestamp created_at = 3;
   // Similarity score from vector search

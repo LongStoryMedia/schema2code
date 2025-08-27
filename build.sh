@@ -38,7 +38,7 @@ fi
 
 # Install the package in editable mode
 echo "Installing package..."
-pip install -e .
+pip install -e . --no-cache-dir --force-reinstall
 
 # Get the absolute path to the virtual environment's bin/Scripts directory
 if [ "$(uname)" == "Darwin" ] || [ "$(uname)" == "Linux" ]; then

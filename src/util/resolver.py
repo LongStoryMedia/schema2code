@@ -45,26 +45,44 @@ class SchemaRefResolver:
                 try:
                     loader = SchemaLoader(schema_path)
                     # Load the schema
-                    self.loaded_schemas[schema_path] = loader.load_schema()
+                    schema = loader.load_schema()
+                    self.loaded_schemas[schema_path] = schema
                     # Track this external reference
                     self.external_refs[ref_path] = schema_path
 
-                    # Create type name from filename
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]
+                    # Create type name from filename or use schema title
+                    type_name = None
+                    if "title" in schema:
+                        type_name = schema["title"].replace(" ", "")
+                    else:
+                        filename = os.path.basename(ref_path)
+                        base_name = os.path.splitext(filename)[0]
+                        type_name = "".join(
+                            x.capitalize() for x in base_name.split("_")
+                        )
 
-                    # Remove 'U' prefix if present (to match the filename normalization in main.py)
-                    if base_name.startswith("U"):
-                        base_name = base_name[1:]
-
-                    type_name = "".join(x.capitalize() for x in base_name.split("_"))
                     self.external_ref_types[schema_path] = type_name
                     self.external_ref_types[ref_path] = type_name
+
+                    # Recursively check for references in arrays
+                    for _, prop_schema in schema.get("properties", {}).items():
+                        if (
+                            prop_schema.get("type") == "array"
+                            and "items" in prop_schema
+                        ):
+                            items = prop_schema["items"]
+                            if "$ref" in items:
+                                items_ref = items["$ref"]
+                                if not items_ref.startswith("#"):
+                                    # This is an external reference in an array
+                                    self.resolve_ref(
+                                        items_ref
+                                    )  # Load and track the schema
 
                 except Exception as e:
                     raise ValueError(
                         f"Failed to load external schema '{schema_path}': {e}"
-                    )
+                    ) from e
 
             return self.loaded_schemas[schema_path]
 
@@ -77,7 +95,7 @@ class SchemaRefResolver:
         {schema_path: (schema_data, type_name)}
         """
         result = {}
-        for ref_path, schema_path in self.external_refs.items():
+        for _, schema_path in self.external_refs.items():
             result[schema_path] = (
                 self.loaded_schemas[schema_path],
                 self.external_ref_types.get(schema_path, ""),
@@ -88,7 +106,6 @@ class SchemaRefResolver:
         """Get the type name for a reference path"""
         # Direct external reference
         if not ref_path.startswith("#"):
-            schema_path = os.path.join(os.path.dirname(self.base_path), ref_path)
             if ref_path in self.external_ref_types:
                 return self.external_ref_types[ref_path]
 
