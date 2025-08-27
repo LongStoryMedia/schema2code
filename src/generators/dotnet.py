@@ -164,16 +164,56 @@ class CSharpGenerator:
                 output.append(f"{indent}    /// </summary>")
 
             output.append(f'{indent}    [JsonPropertyName("{prop_name}")]')
+
+            # Add validation attributes for min/max constraints
+            min_value = prop_schema.get("minimum")
+            max_value = prop_schema.get("maximum")
+            exclusive_min = prop_schema.get("exclusiveMinimum")
+            exclusive_max = prop_schema.get("exclusiveMaximum")
+
+            # Add System.ComponentModel.DataAnnotations validation attributes
+            prop_type = prop_schema.get("type", "")
+            if prop_type in ["integer", "number"]:
+                if min_value is not None:
+                    output.append(f"{indent}    [Range({min_value}, double.MaxValue)]")
+                if max_value is not None:
+                    output.append(f"{indent}    [Range(double.MinValue, {max_value})]")
+                if exclusive_min is not None:
+                    # Exclusive minimum isn't directly supported - would need custom validator
+                    pass
+                if exclusive_max is not None:
+                    # Exclusive maximum isn't directly supported - would need custom validator
+                    pass
+
+            # Check if property is required
             is_required = prop_name in schema.get("required", [])
+
+            # Add default value if provided
+            default_value = prop_schema.get("default")
+            default_str = ""
+            if default_value is not None:
+                if isinstance(default_value, str):
+                    default_str = f' = "{default_value}";'
+                elif isinstance(default_value, bool):
+                    default_str = f" = {str(default_value).lower()};"
+                else:
+                    default_str = f" = {default_value};"
+            elif is_required:
+                default_str = " = default!;"
 
             if is_required:
                 output.append(
-                    f"{indent}    public {cs_type} {prop_pascal_case} {{ get; set; }} = default!;"
+                    f"{indent}    public {cs_type} {prop_pascal_case} {{ get; set; }}{default_str}"
                 )
             else:
-                output.append(
-                    f"{indent}    public {cs_type}? {prop_pascal_case} {{ get; set; }}"
-                )
+                if default_value is not None:
+                    output.append(
+                        f"{indent}    public {cs_type}? {prop_pascal_case} {{ get; set; }}{default_str}"
+                    )
+                else:
+                    output.append(
+                        f"{indent}    public {cs_type}? {prop_pascal_case} {{ get; set; }}"
+                    )
 
         output.append(f"{indent}}}")
 
@@ -217,7 +257,7 @@ class CSharpGenerator:
                     return to_pascal_case(base_name)
 
                 # Try to resolve the reference
-                resolved_schema = ref_resolver.resolve_ref(ref_path)
+                ref_resolver.resolve_ref(ref_path)  # Just to verify it exists
 
                 # If unable to extract name, fall back to property name
                 return to_pascal_case(name)
@@ -225,6 +265,26 @@ class CSharpGenerator:
             except Exception:
                 # If reference resolution fails, fall back to string
                 pass
+
+        # Handle oneOf, anyOf, allOf, and not schemas
+        if "oneOf" in prop_schema:
+            # For oneOf in C#, we use object as a base type since there's no union type
+            # More sophisticated implementation could generate a custom type with converters
+            return "object"
+
+        if "anyOf" in prop_schema:
+            # Similar to oneOf for C#
+            return "object"
+
+        if "allOf" in prop_schema:
+            # For allOf in C#, we'd ideally create a composite type, but as a simplification
+            # we'll use the most specific type in the chain (usually last)
+            last_schema = prop_schema["allOf"][-1]
+            return CSharpGenerator._get_cs_type(last_schema, name, ref_resolver)
+
+        if "not" in prop_schema:
+            # C# doesn't have a way to represent "not" schemas directly
+            return "object"
 
         # Handle enum references
         if "enum" in prop_schema:

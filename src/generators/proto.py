@@ -366,6 +366,37 @@ class ProtoGenerator:
         nested_type = None
         is_repeated = False
 
+        # Handle oneOf, anyOf, allOf, not blocks
+        if "oneOf" in schema:
+            # For oneOf in Protocol Buffers, create a oneof group in the parent message
+            # This is handled at the caller level, but we need to provide a default type
+            # For now, we'll just use the first option as default
+            if schema["oneOf"]:
+                return ProtoGenerator._get_field_type(
+                    schema["oneOf"][0], ref_resolver, processed_types, prop_name
+                )
+            return "google.protobuf.Any", is_repeated, None
+
+        if "anyOf" in schema:
+            # Similar to oneOf, but semantic difference is not representable in protobuf
+            if schema["anyOf"]:
+                return ProtoGenerator._get_field_type(
+                    schema["anyOf"][0], ref_resolver, processed_types, prop_name
+                )
+            return "google.protobuf.Any", is_repeated, None
+
+        if "allOf" in schema:
+            # For allOf, take the most specific type (usually last)
+            if schema["allOf"]:
+                return ProtoGenerator._get_field_type(
+                    schema["allOf"][-1], ref_resolver, processed_types, prop_name
+                )
+            return "google.protobuf.Any", is_repeated, None
+
+        if "not" in schema:
+            # "not" doesn't have a direct representation in Protocol Buffers
+            return "google.protobuf.Any", is_repeated, None
+
         # Handle $ref
         if "$ref" in schema and ref_resolver:
             ref = schema["$ref"]

@@ -28,6 +28,7 @@ try:
     from . import inference_service
     from . import inference_service_config
     from . import internal_config
+    from . import langchain_message
     from . import lora_weight
     from . import memory
     from . import memory_config
@@ -101,6 +102,7 @@ __all__ = [
     'inference_service',
     'inference_service_config',
     'internal_config',
+    'langchain_message',
     'lora_weight',
     'memory',
     'memory_config',
@@ -168,6 +170,7 @@ __all__ = [
     'InferenceService',
     'InferenceServiceConfig',
     'InternalConfig',
+    'LangChainMessage',
     'LoraWeight',
     'Memory',
     'MemoryConfig',
@@ -287,6 +290,9 @@ from .inference_service_config import (
 )
 from .internal_config import (
     InternalConfig,
+)
+from .langchain_message import (
+    LangChainMessage,
 )
 from .lora_weight import (
     LoraWeight,

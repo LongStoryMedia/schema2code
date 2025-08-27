@@ -582,6 +582,41 @@ class PythonGenerator:
                     file=sys.stderr,
                 )
 
+        # Handle oneOf, anyOf, allOf, and not
+        if "oneOf" in prop_schema:
+            # For oneOf, create a Union type of all possible types
+            types = [
+                PythonGenerator._get_python_type(
+                    schema, f"{name}Option{i}", use_pydantic, ref_resolver
+                )
+                for i, schema in enumerate(prop_schema["oneOf"])
+            ]
+            return f"Union[{', '.join(types)}]"
+
+        if "anyOf" in prop_schema:
+            # For anyOf, similar to oneOf but semantically different (can match multiple schemas)
+            types = [
+                PythonGenerator._get_python_type(
+                    schema, f"{name}Option{i}", use_pydantic, ref_resolver
+                )
+                for i, schema in enumerate(prop_schema["anyOf"])
+            ]
+            return f"Union[{', '.join(types)}]"
+
+        if "allOf" in prop_schema:
+            # For allOf, we'd ideally create an intersection type, but Python doesn't have that
+            # So we'll use the most specific type (usually the last one in the allOf list)
+            # This is a simplification - a proper implementation would merge the schemas
+            last_schema = prop_schema["allOf"][-1]
+            return PythonGenerator._get_python_type(
+                last_schema, name, use_pydantic, ref_resolver
+            )
+
+        if "not" in prop_schema:
+            # Python doesn't have a direct way to represent "not" schemas
+            # We'll just use Any as a fallback
+            return "Any"
+
         schema_type = prop_schema.get("type", "string")
         schema_format = prop_schema.get("format", "")
 

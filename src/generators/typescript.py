@@ -402,8 +402,78 @@ class TypeScriptGenerator:
             except ValueError as e:
                 print(f"Warning: {e}", file=sys.stderr)
 
+        # Handle oneOf, anyOf, allOf, and not schemas
+        if "oneOf" in prop_schema:
+            # For oneOf, create a union type
+            types = [
+                TypeScriptGenerator._get_ts_type(
+                    schema, f"{name}Option{i}", ref_resolver
+                )
+                for i, schema in enumerate(prop_schema["oneOf"])
+            ]
+            # Remove duplicate types
+            unique_types = list(dict.fromkeys(types))
+            return (
+                unique_types[0] if len(unique_types) == 1 else " | ".join(unique_types)
+            )
+
+        if "anyOf" in prop_schema:
+            # For anyOf, similar to oneOf in TypeScript
+            types = [
+                TypeScriptGenerator._get_ts_type(
+                    schema, f"{name}Option{i}", ref_resolver
+                )
+                for i, schema in enumerate(prop_schema["anyOf"])
+            ]
+            # Remove duplicate types
+            unique_types = list(dict.fromkeys(types))
+            return (
+                unique_types[0] if len(unique_types) == 1 else " | ".join(unique_types)
+            )
+
+        if "allOf" in prop_schema:
+            # For allOf, we'd use an intersection type in TypeScript
+            types = [
+                TypeScriptGenerator._get_ts_type(
+                    schema, f"{name}Option{i}", ref_resolver
+                )
+                for i, schema in enumerate(prop_schema["allOf"])
+            ]
+            # Remove duplicate types
+            unique_types = list(dict.fromkeys(types))
+            return (
+                unique_types[0] if len(unique_types) == 1 else " & ".join(unique_types)
+            )
+
+        if "not" in prop_schema:
+            # TypeScript doesn't have a direct way to represent "not" schemas
+            # We'll use unknown as a fallback
+            return "unknown"
+
         schema_type = prop_schema.get("type", "string")
         schema_format = prop_schema.get("format", "")
+
+        # Handle type arrays (multiple types)
+        if isinstance(schema_type, list):
+            ts_types = []
+            for t in schema_type:
+                if t == "null":
+                    ts_types.append("null")
+                elif t == "string":
+                    ts_types.append("string")
+                elif t in ["integer", "number"]:
+                    ts_types.append("number")
+                elif t == "boolean":
+                    ts_types.append("boolean")
+                elif t == "array":
+                    # This is an array with potentially multiple item types
+                    # For simplicity, we'll use any[] for this case
+                    ts_types.append("any[]")
+                elif t == "object":
+                    ts_types.append("Record<string, unknown>")
+                else:
+                    ts_types.append("unknown")
+            return " | ".join(ts_types)
 
         if schema_type == "string":
             # Handle string enum as a union type
@@ -434,10 +504,29 @@ class TypeScriptGenerator:
             return "boolean"
         elif schema_type == "array":
             items = prop_schema.get("items", {})
-            item_type = TypeScriptGenerator._get_ts_type(
-                items, f"{name}Item", ref_resolver
-            )
-            return f"{item_type}[]"
+            # Handle items that contain oneOf directly
+            if "oneOf" in items:
+                # For array items with oneOf, create a union of each type
+                item_types = [
+                    TypeScriptGenerator._get_ts_type(
+                        schema, f"{name}Item{i}", ref_resolver
+                    )
+                    for i, schema in enumerate(items["oneOf"])
+                ]
+                # Remove duplicate types
+                unique_item_types = list(dict.fromkeys(item_types))
+                item_type = (
+                    unique_item_types[0]
+                    if len(unique_item_types) == 1
+                    else " | ".join(unique_item_types)
+                )
+                return f"({item_type})[]"  # Parentheses needed for union types
+            else:
+                # Standard array handling
+                item_type = TypeScriptGenerator._get_ts_type(
+                    items, f"{name}Item", ref_resolver
+                )
+                return f"{item_type}[]"
         elif schema_type == "object":
             if "properties" in prop_schema:
                 # For nested objects with defined properties

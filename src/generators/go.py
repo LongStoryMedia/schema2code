@@ -543,6 +543,35 @@ class GoGenerator:
             if include_yaml_tags:
                 tag_parts.append(f'yaml:"{prop_name}"')
 
+            # Add validation tags (for go-validator)
+            validation_tags = []
+
+            # Add validation for min/max constraints
+            if prop_schema.get("type") in ["integer", "number"]:
+                if "minimum" in prop_schema:
+                    validation_tags.append(f'min={prop_schema["minimum"]}')
+                if "maximum" in prop_schema:
+                    validation_tags.append(f'max={prop_schema["maximum"]}')
+                if "exclusiveMinimum" in prop_schema:
+                    validation_tags.append(f'gt={prop_schema["exclusiveMinimum"]}')
+                if "exclusiveMaximum" in prop_schema:
+                    validation_tags.append(f'lt={prop_schema["exclusiveMaximum"]}')
+
+            # Add validation for default values
+            if "default" in prop_schema:
+                default_value = prop_schema["default"]
+                if isinstance(default_value, str):
+                    validation_tags.append(f'default="{default_value}"')
+                else:
+                    validation_tags.append(f"default={default_value}")
+
+            # Add required validation if needed
+            if prop_name in required:
+                validation_tags.append("required")
+
+            if validation_tags:
+                tag_parts.append(f'validate:"{",".join(validation_tags)}"')
+
             combined_tag = f'`{" ".join(tag_parts)}`'
 
             desc = prop_schema.get("description", "")
@@ -609,6 +638,26 @@ class GoGenerator:
 
             except ValueError as e:
                 print(f"Warning: {e}", file=sys.stderr)
+
+        # Handle oneOf, anyOf, allOf, and not schemas
+        if "oneOf" in prop_schema:
+            # For oneOf in Go, we'll use interface{} as it can hold any type
+            # A more sophisticated implementation would generate a custom type with validation
+            return "interface{}", prop_schema
+
+        if "anyOf" in prop_schema:
+            # Similar to oneOf for Go
+            return "interface{}", prop_schema
+
+        if "allOf" in prop_schema:
+            # For allOf in Go, we'll use the most specific type (usually last)
+            # This is a simplification - a proper implementation would merge the schemas
+            last_schema = prop_schema["allOf"][-1]
+            return GoGenerator._get_go_type(last_schema, name, ref_resolver)
+
+        if "not" in prop_schema:
+            # Go doesn't have a way to represent "not" schemas directly
+            return "interface{}", prop_schema
 
         schema_type = prop_schema.get("type", "string")
         schema_format = prop_schema.get("format", "")
