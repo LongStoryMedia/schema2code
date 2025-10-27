@@ -38,7 +38,7 @@ message ResearchTask {
   // Error message if task failed
   string error_message = 7;
   // Research plan with sub-questions
-  string plan = 8;
+  ResearchPlan plan = 8;
   // Collected results from the research
   repeated string results = 9;
   // Timestamp of when the task was created

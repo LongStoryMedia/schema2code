@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DataClassExample
+description: Example schema to test dataclass generation defaults
+type: object
+properties:
+  tags:
+    type: array
+    items:
+      type: string
+    description: List of tags
+    default: []
+  metadata:
+    type: object
+    description: Arbitrary metadata map
+    additionalProperties:
+      type: string
+    default: {}
+  name:
+    type: string
+    description: Name with no default
+required:
+  - name

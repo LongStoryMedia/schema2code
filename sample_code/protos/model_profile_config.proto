@@ -41,4 +41,8 @@ message ModelProfileConfig {
   string image_generation_prompt_profile_id = 16;
   // Image generation profile ID
   string image_generation_profile_id = 17;
+  // Engineering profile ID
+  string engineering_profile_id = 18;
+  // Reranking profile ID
+  string reranking_profile_id = 19;
 }

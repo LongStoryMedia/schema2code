@@ -1,0 +1,48 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DynamicTool
+type: object
+description: Schema for DynamicTool object
+properties:
+  id:
+    type: integer
+    description: The unique identifier for the tool
+  user_id:
+    type: text
+    description: The unique identifier for the user
+  name:
+    type: string
+    description: The name of the tool
+  description:
+    type: string
+    description: Description of what the tool does
+  embedding:
+    type: array
+    items:
+      type: number
+    description: The tool's embedding vector
+  code:
+    type: string
+    description: The tool's implementation code
+  function_name:
+    type: string
+    description: The name of the function to be called
+  parameters:
+    type: object
+    additionalProperties:
+      type: [string, number, integer, boolean, object, array, null]
+    description: Parameters for the tool with any values
+  created_at:
+    type: string
+    format: date-time
+    description: The timestamp when the tool was created
+  updated_at:
+    type: string
+    format: date-time
+    description: The timestamp when the tool was last updated
+additionalProperties: true
+required:
+  - name
+  - description
+  - code
+  - function_name
+  - user_id

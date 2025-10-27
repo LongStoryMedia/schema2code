@@ -6,7 +6,10 @@ syntax = "proto3";
 package schema;
 
 import "auth_config.proto";
+import "circuit_breaker_config.proto";
 import "database_config.proto";
+import "event_stream_config.proto";
+import "gpu_config.proto";
 import "image_generation_config.proto";
 import "inference_service_config.proto";
 import "internal_config.proto";
@@ -35,7 +38,10 @@ message Config {
   ModelProfileConfig model_profiles = 11;
   RefinementConfig refinement = 12;
   ImageGenerationConfig image_generation = 13;
+  CircuitBreakerConfig circuit_breaker = 14;
+  GPUConfig gpu_config = 15;
   // Log level
-  string log_level = 14;
-  InternalConfig internal = 15;
+  string log_level = 16;
+  InternalConfig internal = 17;
+  EventStreamConfig event_stream = 18;
 }

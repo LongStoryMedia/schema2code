@@ -20,39 +20,55 @@ class SchemaLoader:
             # Determine file type by extension
             _, ext = os.path.splitext(self.schema_file.lower())
 
-            if ext in ['.yaml', '.yml']:
+            if ext in [".yaml", ".yml"]:
                 # Check if YAML is supported
                 if not YAML_SUPPORT:
                     print(
-                        "Warning: YAML support requires PyYAML. Install with 'pip install pyyaml'", file=sys.stderr)
+                        "Warning: YAML support requires PyYAML. Install with 'pip install pyyaml'",
+                        file=sys.stderr,
+                    )
                     print("Attempting to parse as JSON instead...", file=sys.stderr)
-                    with open(self.schema_file, 'r') as f:
+                    with open(self.schema_file, "r", encoding="utf-8") as f:
                         return json.load(f)
 
-                if hasattr(yaml, 'safe_load') and yaml is not None:
+                if hasattr(yaml, "safe_load") and yaml is not None:
                     # Parse as YAML
-                    with open(self.schema_file, 'r') as f:
-                        return yaml.safe_load(f)
+                    with open(self.schema_file, "r") as f:
+                        data = yaml.safe_load(f)
+                        # Basic validation: schema should be a mapping/dict
+                        if not isinstance(data, dict):
+                            raise ValueError(
+                                f"Error: {self.schema_file} does not contain a valid object schema"
+                            )
+                        return data
                 else:
                     # Fallback to JSON if yaml support is incomplete
                     print(
-                        "YAML support incomplete. Parsing as JSON instead...", file=sys.stderr)
-                    with open(self.schema_file, 'r') as f:
+                        "YAML support incomplete. Parsing as JSON instead...",
+                        file=sys.stderr,
+                    )
+                    with open(self.schema_file, "r") as f:
                         return json.load(f)
             else:
                 # Default to JSON for all other extensions
-                with open(self.schema_file, 'r') as f:
-                    return json.load(f)
+                with open(self.schema_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if not isinstance(data, dict):
+                        raise ValueError(
+                            f"Error: {self.schema_file} does not contain a valid object schema"
+                        )
+                    return data
 
         except yaml.YAMLError:  # type: ignore
-            print(f"Error: {self.schema_file} is not a valid YAML file",
-                  file=sys.stderr)
+            print(
+                f"Error: {self.schema_file} is not a valid YAML file", file=sys.stderr
+            )
             raise
         except json.JSONDecodeError:
-            print(f"Error: {self.schema_file} is not a valid JSON file",
-                  file=sys.stderr)
+            print(
+                f"Error: {self.schema_file} is not a valid JSON file", file=sys.stderr
+            )
             raise
         except FileNotFoundError:
-            print(
-                f"Error: Schema file '{self.schema_file}' not found", file=sys.stderr)
+            print(f"Error: Schema file '{self.schema_file}' not found", file=sys.stderr)
             raise

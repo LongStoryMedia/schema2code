@@ -1,0 +1,19 @@
+[run]
+source = src
+omit = 
+    tests/*
+    sample_code/*
+    schema2code/*
+    */__init__.py
+branch = True
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 1
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.: 
+
+[html]
+directory = coverage_html

@@ -1,0 +1,14 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+type: integer
+title: PipelinePriority
+description: "Pipeline priority levels for cache eviction and resource management"
+enum: 
+  - 1
+  - 5
+  - 10
+  - 20
+x-enum-varnames:
+  - "LOW"
+  - "MEDIUM" 
+  - "HIGH"
+  - "CRITICAL"

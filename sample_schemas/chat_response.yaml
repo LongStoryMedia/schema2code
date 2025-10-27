@@ -13,14 +13,13 @@ properties:
     type: string
     format: date-time
     description: Timestamp when the response was created
-  model:
-    type: string
-    description: The name or identifier of the model used for generation
   context:
     type: array
     items:
-      type: number
-    description: Array of numbers representing the tokenized context
+      type: array
+      items:
+        type: number
+    description: Vectors representing the tokenized context (embeddings)
   finish_reason:
     type: string
     description: Specific indicator of how or why the generation finished
@@ -52,8 +51,6 @@ properties:
     description: Time taken for token evaluation in milliseconds
 required:
   - done
-  - created_at
-  - model
 definitions:
   Message:
     $ref: message.yaml

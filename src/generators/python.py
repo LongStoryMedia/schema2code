@@ -21,6 +21,8 @@ class PythonGenerator:
         is_main: bool = True,
     ) -> str:
         """Generate Python types from a JSON schema"""
+        # Reserved for future behavior differences between main and external schemas
+        _unused_is_main = is_main
         # Initialize ref resolver if needed
         if ref_resolver is None and schema_file is not None:
             ref_resolver = SchemaRefResolver(schema_file, schema)
@@ -60,7 +62,7 @@ class PythonGenerator:
                 )
             else:
                 imports.append("from enum import Enum")
-                imports.append("from dataclasses import dataclass")
+                imports.append("from dataclasses import dataclass, field")
         else:
             # Add conditional imports based on used formats
             for _, prop_schema in schema.get("properties", {}).items():
@@ -74,7 +76,7 @@ class PythonGenerator:
                     "from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat"
                 )
             else:
-                imports.append("from dataclasses import dataclass")
+                imports.append("from dataclasses import dataclass, field")
 
         output = header + ["\n".join(imports), ""]
 
@@ -100,6 +102,18 @@ class PythonGenerator:
                 ]
                 if name in imported_types:
                     return None
+
+                # Also check if this name corresponds to an external reference in properties
+                for prop_name, prop_schema in schema.get("properties", {}).items():
+                    if "$ref" in prop_schema and not prop_schema["$ref"].startswith(
+                        "#"
+                    ):
+                        # Convert property name to PascalCase to match potential type name
+                        from ..util.schema_helpers import to_pascal_case
+
+                        potential_type_name = to_pascal_case(prop_name)
+                        if potential_type_name == name:
+                            return None
 
             return PythonGenerator._generate_type(
                 sch, use_pydantic, ref_resolver, processed_types
@@ -424,8 +438,12 @@ class PythonGenerator:
 
                 # Handle default value
                 if default_value is not None:
-                    if isinstance(default_value, str):
-                        field_params.append(f'default="{default_value}"')
+                    if isinstance(default_value, (list, dict)):
+                        field_params.append(
+                            f"default_factory=lambda: {repr(default_value)}"
+                        )
+                    elif isinstance(default_value, str):
+                        field_params.append(f"default={repr(default_value)}")
                     else:
                         field_params.append(f"default={default_value}")
                 elif not is_required:
@@ -519,9 +537,13 @@ class PythonGenerator:
                     output.append(f"    {prop_name}: {field_type}")
                 else:
                     if default_value is not None:
-                        if isinstance(default_value, str):
+                        if isinstance(default_value, (list, dict)):
                             output.append(
-                                f'    {prop_name}: {field_type} = "{default_value}"'
+                                f"    {prop_name}: {field_type} = field(default_factory=lambda: {repr(default_value)})"
+                            )
+                        elif isinstance(default_value, str):
+                            output.append(
+                                f"    {prop_name}: {field_type} = {repr(default_value)}"
                             )
                         else:
                             output.append(

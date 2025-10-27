@@ -28,8 +28,7 @@ properties:
     description: Timestamp of when the message was created
   conversation_id:
     type: integer
-    description: Id of the conversation this message belongs to
+    description: Unique identifier for the conversation
 required:
   - role
   - content
-  - conversation_id

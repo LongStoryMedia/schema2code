@@ -13,49 +13,37 @@ A tool for converting JSON schema files to type definitions in various programmi
 
 ## Installation
 
-### Quick Install (Recommended)
+### From PyPI (Recommended)
 
-Install with curl:
+Install the latest stable release:
+
+```bash
+pip install schema2code
+```
+
+### Development Installation
+
+For development or to get the latest features:
+
+```bash
+git clone https://github.com/LongStoryMedia/schema2code.git
+cd schema2code
+pip install -e ".[dev]"
+```
+
+### Quick Install Script
+
+Alternatively, use the install script:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/LongStoryMedia/schema2code/main/install.sh | bash
 ```
 
-Or with wget:
-
-```bash
-wget -qO- https://raw.githubusercontent.com/LongStoryMedia/schema2code/main/install.sh | bash
-```
-
 This will:
-
 1. Create a `.schema2code` directory in your home folder
-2. Clone or download the repository
+2. Clone the repository
 3. Set up a virtual environment
 4. Install the package and add it to your PATH
-
-### Manual Installation
-
-For development or manual installation:
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/LongStoryMedia/schema2code.git
-cd schema2code
-```
-
-1. Run the build script:
-
-```bash
-./build.sh
-```
-
-Or install directly with pip for development:
-
-```bash
-pip install -e .
-```
 
 ## Usage
 
@@ -132,6 +120,63 @@ To test the command line tool across all sample schemas and supported languages,
 ```
 
 This script will generate code for all schemas in `sample_schemas/` and output to `sample_code/`, reporting any errors or issues.
+
+### Unit Test Suite
+
+The project includes a pytest-based unit test suite covering:
+
+- Generators (Python defaults & duplicate avoidance, TypeScript imports & index exports)
+- CLI integration (multi-file generation, error cases)
+- Schema loader validation (rejects non-object root documents)
+
+#### Quick Start
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On macOS/Linux
+pip install -r requirements.txt pytest
+pytest -q
+```
+
+#### Notes
+
+- Tests import implementation modules via the `src.` namespace (`from src.generators.python import PythonGenerator`).
+- No editable install (`pip install -e .`) is required just to run tests, but you can still use it for development if preferred.
+- Add new generator tests in `tests/` following existing patterns; prefer focused assertions on generated code snippets.
+
+#### Troubleshooting
+
+- If imports fail, ensure `src/` is present and you launched pytest from the project root.
+- Regenerate the virtual environment if dependency versions conflict: remove `.venv/` and repeat the quick start steps.
+
+## Releases and Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+### Version Information
+
+Check the installed version:
+
+```bash
+schema2code --version
+```
+
+### Building from Source
+
+To build the package yourself:
+
+```bash
+# Install build dependencies
+pip install build twine
+
+# Build the package
+python -m build
+
+# Check the build
+twine check dist/*
+```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development and release instructions.
 
 ## Contributing
 

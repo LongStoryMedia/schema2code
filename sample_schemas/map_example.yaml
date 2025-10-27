@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MapExample
+type: object
+properties:
+  attributes:
+    type: object
+    additionalProperties:
+      type: string
+  counts:
+    type: object
+    additionalProperties:
+      type: integer
+  generic:
+    type: object
+    additionalProperties: true

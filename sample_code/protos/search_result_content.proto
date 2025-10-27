@@ -13,4 +13,6 @@ message SearchResultContent {
   string title = 2;
   // Snippet or summary of the content
   string content = 3;
+  // Relevance score of the content
+  double relevance = 4;
 }

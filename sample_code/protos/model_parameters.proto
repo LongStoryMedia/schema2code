@@ -27,4 +27,27 @@ message ModelParameters {
   double top_p = 9;
   // Minimum probability threshold for token selection
   double min_p = 10;
+  // Whether to enable "thinking" mode for the model
+  bool think = 11;
+  // Maximum number of tokens to generate in a single response
+  int32 max_tokens = 12;
+  // Number of parts to split the model into. -1 means auto.
+  int32 n_parts = 13;
+  // Batch size for processing inputs
+  int32 batch_size = 14;
+  // Number of MoE (Mixture of Experts) layers to keep on CPU for memory optimization
+  int32 n_cpu_moe = 15;
+  // Reasoning effort level for chain-of-thought processing
+  enum ReasoningEffortEnum {
+    REASONINGEFFORTENUM_UNSPECIFIED = 0;
+    LOW = 1;
+    MEDIUM = 2;
+    HIGH = 3;
+  }
+  
+
+  // Reasoning effort level for chain-of-thought processing
+  ReasoningEffortEnum reasoning_effort = 16;
+  // Enable flash attention optimization for memory efficiency
+  bool flash_attention = 17;
 }

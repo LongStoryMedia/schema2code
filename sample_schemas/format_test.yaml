@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FormatTest
+type: object
+description: Schema to trigger Go imports for time, uuid, and url
+properties:
+  timestamp:
+    type: string
+    format: date-time
+  day:
+    type: string
+    format: date
+  duration:
+    type: string
+    format: duration
+  user_id:
+    type: string
+    format: uuid
+  homepage:
+    type: string
+    format: uri

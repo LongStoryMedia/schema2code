@@ -5,6 +5,9 @@ syntax = "proto3";
 
 package schema;
 
+import "circuit_breaker_config.proto";
+import "event_stream_config.proto";
+import "gpu_config.proto";
 import "image_generation_config.proto";
 import "memory_config.proto";
 import "model_profile_config.proto";
@@ -24,4 +27,7 @@ message UserConfig {
   ModelProfileConfig model_profiles = 6;
   RefinementConfig refinement = 7;
   ImageGenerationConfig image_generation = 8;
+  CircuitBreakerConfig circuit_breaker = 9;
+  GPUConfig gpu_config = 10;
+  EventStreamConfig event_stream = 11;
 }

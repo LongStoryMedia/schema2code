@@ -12,4 +12,6 @@ enum MemorySource {
   SUMMARY = 1;
   // Memory type for conversation messages
   MESSAGE = 2;
+  // Memory type for search topic syntheses
+  SEARCH = 3;
 }

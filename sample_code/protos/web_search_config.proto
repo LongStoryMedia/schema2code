@@ -5,6 +5,8 @@ syntax = "proto3";
 
 package schema;
 
+import "web_search_providers.proto";
+
 // Web search settings
 message WebSearchConfig {
   // Whether web search is enabled
@@ -15,4 +17,8 @@ message WebSearchConfig {
   int32 max_results = 3;
   // Include results in response
   bool include_results = 4;
+  // List of search providers to use
+  repeated WebSearchProviders search_providers = 5;
+  // Maximum number of URLs to deep crawl
+  int32 max_urls_deep = 6;
 }

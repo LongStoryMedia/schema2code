@@ -163,28 +163,45 @@ class TypeScriptGenerator:
         """Find all external references used in a schema"""
         used_refs = set()
 
-        # Check all properties for external references
+        def find_refs_in_schema(sch):
+            """Recursively find external refs in a schema"""
+            if isinstance(sch, dict):
+                if "$ref" in sch:
+                    ref_path = sch["$ref"]
+                    # Direct external reference
+                    if not ref_path.startswith("#"):
+                        used_refs.add(ref_path)
+                        # Also resolve it to populate the resolver
+                        try:
+                            ref_resolver.resolve_ref(ref_path)
+                        except Exception:
+                            pass
+                    # Reference to a definition that might reference an external schema
+                    elif ref_path.startswith("#/definitions/"):
+                        def_name = ref_path.split("/")[-1]
+                        if (
+                            hasattr(ref_resolver, "definition_to_external_map")
+                            and def_name in ref_resolver.definition_to_external_map
+                        ):
+                            ext_path = ref_resolver.definition_to_external_map[def_name]
+                            used_refs.add(ext_path)
+
+                # Recursively check all values in the dict
+                for value in sch.values():
+                    find_refs_in_schema(value)
+            elif isinstance(sch, list):
+                # Recursively check all items in the list
+                for item in sch:
+                    find_refs_in_schema(item)
+
+        # Check all properties for external references (recursively)
         for _, prop_schema in schema.get("properties", {}).items():
-            if "$ref" in prop_schema:
-                ref_path = prop_schema["$ref"]
-                # Direct external reference
-                if not ref_path.startswith("#"):
-                    used_refs.add(ref_path)
-                # Reference to a definition that might reference an external schema
-                elif ref_path.startswith("#/definitions/"):
-                    def_name = ref_path.split("/")[-1]
-                    if (
-                        hasattr(ref_resolver, "definition_to_external_map")
-                        and def_name in ref_resolver.definition_to_external_map
-                    ):
-                        ext_path = ref_resolver.definition_to_external_map[def_name]
-                        used_refs.add(ext_path)
+            find_refs_in_schema(prop_schema)
 
         # Check definitions for external references
         if "definitions" in schema:
             for _, def_schema in schema["definitions"].items():
-                if "$ref" in def_schema and not def_schema["$ref"].startswith("#"):
-                    used_refs.add(def_schema["$ref"])
+                find_refs_in_schema(def_schema)
 
         return used_refs
 
@@ -547,3 +564,75 @@ class TypeScriptGenerator:
                 return "Record<string, unknown>"
         else:
             return "unknown"
+
+    @staticmethod
+    def generate_index_exports(model_dir: str) -> None:
+        """Generate TypeScript index.ts file that exports all models"""
+        import glob
+        import re
+
+        # Find all .ts files in the directory (excluding index.ts itself)
+        pattern = os.path.join(model_dir, "*.ts")
+        ts_files = glob.glob(pattern)
+
+        # Filter out index.ts if it exists
+        ts_files = [
+            f for f in ts_files if not os.path.basename(f).lower() == "index.ts"
+        ]
+
+        if not ts_files:
+            return
+
+        # Extract actual type names from TypeScript files
+        exports = []
+        for ts_file in sorted(ts_files):
+            filename = os.path.basename(ts_file)
+            file_basename = os.path.splitext(filename)[0]
+
+            # Read the file to extract the actual type name
+            actual_type_name = None
+            try:
+                with open(ts_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Look for export interface/type/enum declarations
+                # Patterns: export interface TypeName, export type TypeName, export enum TypeName
+                patterns = [
+                    r"export\s+interface\s+(\w+)",
+                    r"export\s+type\s+(\w+)",
+                    r"export\s+enum\s+(\w+)",
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, content)
+                    if match:
+                        actual_type_name = match.group(1)
+                        break
+
+                # Fallback to filename-based naming if no export found
+                if not actual_type_name:
+                    actual_type_name = file_basename
+
+            except Exception:
+                # Fallback to filename-based naming
+                actual_type_name = file_basename
+
+            # Generate export statement with actual type name
+            exports.append(f"export {{ {actual_type_name} }} from './{file_basename}';")
+
+        # Generate the index.ts content
+        content = [
+            Writer.generate_header_comment("typescript"),
+            "",
+            "// Export all generated types",
+            "",
+        ]
+        content.extend(exports)
+        content.append("")  # Final newline
+
+        # Write the index.ts file
+        index_path = os.path.join(model_dir, "index.ts")
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(content))
+
+        print(f"Generated index.ts with type exports: {index_path}")

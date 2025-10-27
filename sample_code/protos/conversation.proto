@@ -15,10 +15,8 @@ message Conversation {
   string user_id = 2;
   // Title of the conversation
   string title = 3;
-  // Model used for the conversation
-  string model = 4;
   // Timestamp of when the conversation was created
-  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp created_at = 4;
   // Timestamp of when the conversation was last updated
-  google.protobuf.Timestamp updated_at = 6;
+  google.protobuf.Timestamp updated_at = 5;
 }

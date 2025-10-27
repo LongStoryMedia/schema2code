@@ -5,7 +5,9 @@ syntax = "proto3";
 
 package schema;
 
+import "circuit_breaker_config.proto";
 import "google/protobuf/timestamp.proto";
+import "gpu_config.proto";
 import "model_parameters.proto";
 import "model_profile_image_settings.proto";
 
@@ -37,4 +39,8 @@ message ModelProfile {
   ModelProfileImageSettings image_settings = 12;
   // Whether to use think mode for the model profile
   bool think = 13;
+  // Optional circuit breaker configuration that overrides global settings
+  CircuitBreakerConfig circuit_breaker = 14;
+  // Optional GPU configuration that overrides global settings
+  GPUConfig gpu_config = 15;
 }

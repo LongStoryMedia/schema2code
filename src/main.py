@@ -17,6 +17,7 @@ from .util.writer import Writer
 from .util.loader import SchemaLoader
 from .util.resolver import SchemaRefResolver
 from .util.schema_helpers import to_pascal_case
+from .__version__ import __version__
 
 
 def generate_types(
@@ -227,6 +228,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate code types from JSON or YAML schema"
     )
+    parser.add_argument(
+        "--version", action="version", version=f"schema2code {__version__}"
+    )
     parser.add_argument("schema_file", help="Path to the JSON or YAML schema file")
     parser.add_argument(
         "--language",
@@ -301,6 +305,20 @@ def main():
                     # Generate __init__.py with exports of all model classes
 
                     PythonGenerator.generate_model_init_exports(output_dir)
+                except Exception as e:
+                    print(
+                        f"Warning: Could not generate model exports: {e}",
+                        file=sys.stderr,
+                    )
+
+        # If successful and language is TypeScript, also generate index.ts with exports
+        if success and args.language == "typescript":
+            # Get the output directory
+            output_dir = os.path.dirname(args.output)
+            if output_dir and os.path.exists(output_dir):
+                try:
+                    # Generate index.ts with exports of all model types
+                    TypeScriptGenerator.generate_index_exports(output_dir)
                 except Exception as e:
                     print(
                         f"Warning: Could not generate model exports: {e}",
