@@ -50,3 +50,5 @@ __pycache__
 .coverage.*
 .tox
 .venv/
+
+coverage.xml

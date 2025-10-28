@@ -144,6 +144,35 @@ pytest -q
 - No editable install (`pip install -e .`) is required just to run tests, but you can still use it for development if preferred.
 - Add new generator tests in `tests/` following existing patterns; prefer focused assertions on generated code snippets.
 
+#### Coverage Testing
+
+The project includes code coverage measurement to ensure test quality:
+
+```bash
+# Run tests with coverage report
+pytest --cov=src --cov-report=term
+
+# Generate HTML coverage report
+pytest --cov=src --cov-report=html
+
+# Generate XML coverage report (for CI/CD)
+pytest --cov=src --cov-report=xml
+```
+
+Coverage reports help identify:
+
+- **Untested code paths**: Functions or branches not executed during tests
+- **Test effectiveness**: Areas where additional test cases might be valuable
+- **Regression prevention**: Ensuring new code includes appropriate tests
+
+The HTML report (in `coverage_html/index.html`) provides an interactive view showing:
+
+- Overall coverage percentage by file and line
+- Missing coverage highlighted in red
+- Branch coverage for conditional logic
+
+**Current coverage target**: Aim for >80% line coverage on generator modules, >60% overall.
+
 #### Troubleshooting
 
 - If imports fail, ensure `src/` is present and you launched pytest from the project root.

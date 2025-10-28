@@ -21,13 +21,11 @@ def test_dataclass_generation_with_default_factory():
     )
     # Expect dataclass decorator
     assert "@dataclass" in code
-    # tags should use default_factory=list
+    # tags should use default_factory=list (without Optional since it has a default)
+    assert re.search(r"tags: List\[str\] = field\(default_factory=lambda: \[\]\)", code)
+    # metadata should use default_factory=dict (without Optional since it has a default)
     assert re.search(
-        r"tags: Optional\[List\[str\]\] = field\(default_factory=list\)", code
-    )
-    # metadata should use default_factory=dict
-    assert re.search(
-        r"metadata: Optional\[Dict\[str, str\]\] = field\(default_factory=dict\)", code
+        r"metadata: Dict\[str, str\] = field\(default_factory=lambda: \{\}\)", code
     )
     # name required so no Optional wrapper removal test; just ensure field exists
     assert re.search(r"name: str", code)

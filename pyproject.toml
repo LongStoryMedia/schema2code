@@ -2,73 +2,39 @@
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = {find = {where = ["src"]}}
-package-dir = {"" = "src"}
-
-[tool.setuptools.dynamic]
-version = {attr = "__version__.__version__"}
-dependencies = {file = ["requirements.txt"]}
-
-[tool.setuptools.package-data]
-"*" = ["py.typed"]kend = "setuptools.build_meta"
-
 [project]
 name = "schema2code"
-dynamic = ["version", "dependencies"]
+version = "0.1.0"
 description = "A tool for converting JSON schema files to type definitions in various programming languages"
 authors = [
     {name = "Scott Long", email = "longstoryscott@gmail.com"},
 ]
 readme = "README.md"
-license = {file = "LICENSE"}
-requires-python = ">=3.8"
-keywords = ["json-schema", "code-generation", "typescript", "go", "python", "csharp", "protobuf"]
+requires-python = ">=3.6"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Code Generators",
-    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+dynamic = ["dependencies"]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "black>=22.0",
-    "flake8>=5.0",
-    "mypy>=1.0",
-    "twine>=4.0",
-    "build>=0.10",
-]
-test = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
+    "pytest",
+    "pytest-cov",
+    "black",
+    "flake8",
 ]
 
 [project.scripts]
 schema2code = "schema2code.main:main"
 
-[project.urls]
-"Homepage" = "https://github.com/LongStoryMedia/schema2code"
-"Bug Reports" = "https://github.com/LongStoryMedia/schema2code/issues"
-"Source" = "https://github.com/LongStoryMedia/schema2code"
-"Documentation" = "https://github.com/LongStoryMedia/schema2code#readme"
-
 [tool.setuptools]
-packages = {find = {where = ["src"], exclude = ["tests*"]}}
-package-dir = {"", "src"}
+packages = {find = {}}
 
 [tool.setuptools.dynamic]
-version = {attr = "__version__.__version__"}
 dependencies = {file = ["requirements.txt"]}
-
-[tool.setuptools.package-data]
-"*" = ["py.typed"]

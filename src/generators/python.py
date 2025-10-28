@@ -38,7 +38,7 @@ class PythonGenerator:
 
         # Track required imports based on used types
         imports = [
-            "from typing import List, Dict, Optional, Any, Union",
+            "from typing import List, Dict, Optional, Any, Union, Annotated, Literal",
             "from datetime import datetime, date, time, timedelta",
         ]
 
@@ -470,14 +470,30 @@ class PythonGenerator:
                 # Combine field params
                 field_param_str = ", ".join(field_params)
 
-                # Create the field definition
+                # Create the field definition using Annotated with explicit default values
                 if not is_required:
-                    output.append(
-                        f"    {prop_name}: Optional[{field_type}] = Field({field_param_str})"
-                    )
+                    if default_value is not None:
+                        if isinstance(default_value, (list, dict)):
+                            # For mutable defaults, we don't set an explicit default on the field
+                            # since we're using default_factory in Field()
+                            output.append(
+                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})]"
+                            )
+                        elif isinstance(default_value, str):
+                            output.append(
+                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {repr(default_value)}"
+                            )
+                        else:
+                            output.append(
+                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {default_value}"
+                            )
+                    else:
+                        output.append(
+                            f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = None"
+                        )
                 else:
                     output.append(
-                        f"    {prop_name}: {field_type} = Field({field_param_str})"
+                        f"    {prop_name}: Annotated[{field_type}, Field({field_param_str})]"
                     )
 
                 # Add field docstring with proper indentation
@@ -641,6 +657,31 @@ class PythonGenerator:
 
         schema_type = prop_schema.get("type", "string")
         schema_format = prop_schema.get("format", "")
+
+        # Handle inline enums - check for enum field in the property schema
+        if "enum" in prop_schema:
+            enum_values = prop_schema["enum"]
+            if enum_values:
+                # Generate string literal union for enum values
+                if all(isinstance(val, str) for val in enum_values):
+                    # String enums: use Literal type
+                    literal_values = ", ".join(f'"{val}"' for val in enum_values)
+                    return f"Literal[{literal_values}]"
+                else:
+                    # Mixed or non-string enums: use Union type
+                    enum_types = []
+                    for val in enum_values:
+                        if isinstance(val, str):
+                            enum_types.append(f'"{val}"')
+                        elif isinstance(val, int):
+                            enum_types.append(str(val))
+                        elif isinstance(val, float):
+                            enum_types.append(str(val))
+                        elif isinstance(val, bool):
+                            enum_types.append(str(val))
+                        else:
+                            enum_types.append(f'"{val}"')
+                    return f"Literal[{', '.join(enum_types)}]"
 
         if schema_type == "string":
             if schema_format == "date-time":
