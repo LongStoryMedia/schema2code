@@ -205,8 +205,6 @@ python -m build
 twine check dist/*
 ```
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development and release instructions.
-
 ## Contributing
 
 Contributions are welcome! To contribute:
