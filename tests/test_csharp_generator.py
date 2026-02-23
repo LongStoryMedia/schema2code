@@ -17,7 +17,10 @@ def test_csharp_class_generation_defaults_and_required():
     schema, schema_path = load_schema("gpu_config.yaml")
     resolver = SchemaRefResolver(schema_path, schema)
     code = CSharpGenerator.generate(
-        schema, namespace="MyApp.Models", schema_file=schema_path, ref_resolver=resolver
+        schema,
+        namespace="MyApp.Models",
+        schema_file=schema_path,
+        ref_resolver=resolver,
     )
     assert "namespace MyApp.Models" in code
     assert "public class GPUConfig" in code

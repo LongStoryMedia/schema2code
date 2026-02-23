@@ -23,23 +23,9 @@ message LangGraphNodeState {
   // Type of the node
   NodeTypeEnum node_type = 2;
   // Input data for the node
-  message InputData {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Input data for the node
-  InputData input_data = 3;
+  map<string, string> input_data = 3;
   // Output data from the node
-  message OutputData {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Output data from the node
-  OutputData output_data = 4;
+  map<string, string> output_data = 4;
   // Time taken to execute this node
   double execution_time_ms = 5;
   // Number of errors encountered

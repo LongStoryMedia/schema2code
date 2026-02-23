@@ -24,4 +24,4 @@ def test_proto_map_additional_properties():
     # counts -> map<string, int32>
     assert "map<string, int32> counts" in code or "map<string, int64> counts" in code
     # generic -> map<string, string>
-    assert "map<string, string> additional_properties" in code
+    assert "map<string, string> generic" in code

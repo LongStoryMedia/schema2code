@@ -20,10 +20,10 @@ def test_typescript_multiple_enums_and_index(tmp_path):
         schema, schema_file=schema_path, ref_resolver=resolver
     )
     # Should create inline union types for enums
-    assert re.search(r"status:\s*(pending \| running \| done);", code)
-    assert re.search(r"level:\s*(low \| medium \| high);", code)
-    # flags array: type should be (alpha | beta)[]
-    assert re.search(r"flags:\s*\(alpha \| beta\)\[];", code)
+    assert re.search(r"status\?\:\s*'pending'\s*\|\s*'running'\s*\|\s*'done';", code)
+    assert re.search(r"level\?\:\s*'low'\s*\|\s*'medium'\s*\|\s*'high';", code)
+    # flags array: type should be 'alpha' | 'beta'[]
+    assert re.search(r"flags\?\:\s*'alpha'\s*\|\s*'beta'\[\];", code)
     # Write file and generate index exports
     out_dir = tmp_path / "ts"
     out_dir.mkdir()

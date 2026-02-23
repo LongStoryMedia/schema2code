@@ -15,14 +15,7 @@ message ChatReq {
   // If true, the response will be streamed back as a series of events
   bool stream = 2;
   // The format to return a response in. Format can be json or a JSON schema
-  message Format {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // The format to return a response in. Format can be json or a JSON schema
-  Format format = 3;
+  map<string, string> format = 3;
   // The ID of the conversation this message belongs to
   int32 conversation_id = 4;
   // Controls how long the model will stay loaded into memory

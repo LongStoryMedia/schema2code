@@ -24,14 +24,7 @@ message PipelineExecutionContext {
   // Type of task being executed
   string task_type = 6;
   // Arguments passed to the pipeline
-  message Arguments {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Arguments passed to the pipeline
-  Arguments arguments = 7;
+  map<string, string> arguments = 7;
   // When the pipeline execution started
   google.protobuf.Timestamp start_time = 8;
   // When the pipeline execution ended
@@ -39,14 +32,7 @@ message PipelineExecutionContext {
   // Current execution state
   ExecutionState execution_state = 10;
   // Pipeline execution result
-  message Result {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Pipeline execution result
-  Result result = 11;
+  map<string, string> result = 11;
   // Error message if execution failed
   string error_message = 12;
   // Timeout for pipeline execution in seconds

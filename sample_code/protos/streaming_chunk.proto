@@ -19,14 +19,7 @@ message StreamingChunk {
   // The actual content of the chunk
   string content = 4;
   // Additional metadata for the chunk
-  message Metadata {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Additional metadata for the chunk
-  Metadata metadata = 5;
+  map<string, string> metadata = 5;
   // When this chunk was generated
   google.protobuf.Timestamp timestamp = 6;
   // Whether this is the final chunk

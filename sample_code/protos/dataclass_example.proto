@@ -10,14 +10,7 @@ message DataClassExample {
   // List of tags
   repeated string tags = 1;
   // Arbitrary metadata map
-  message Metadata {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Arbitrary metadata map
-  Metadata metadata = 2;
+  map<string, string> metadata = 2;
   // Name with no default
   string name = 3;
 }

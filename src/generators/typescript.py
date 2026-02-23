@@ -230,12 +230,15 @@ class TypeScriptGenerator:
             if not type_name:
                 # Try to derive type name from the file path
                 ref_basename = os.path.splitext(os.path.basename(ref_path))[0]
+                # Sanitize basename to use underscores (replace hyphens)
+                ref_basename = ref_basename.replace("-", "_")
                 type_name = "".join(x.capitalize() for x in ref_basename.split("_"))
                 if not type_name:
                     continue
 
             # Skip self-imports (importing from the current file)
-            ref_basename = os.path.splitext(os.path.basename(ref_path))[0]
+            ref_basename_raw = os.path.splitext(os.path.basename(ref_path))[0]
+            ref_basename = ref_basename_raw.replace("-", "_")  # Sanitize to use underscores
             ref_type_name = "".join(x.capitalize() for x in ref_basename.split("_"))
             if ref_basename == current_basename or ref_type_name == current_type_name:
                 continue
@@ -261,6 +264,42 @@ class TypeScriptGenerator:
         return imports
 
     @staticmethod
+    def _merge_composed_schema_properties(
+        schema: Dict[str, Any],
+        ref_resolver: Optional[SchemaRefResolver] = None,
+    ) -> tuple[Dict[str, Any], list]:
+        """
+        Merge properties from allOf at the root level only.
+        anyOf/oneOf are discriminated unions and should NOT merge properties.
+        Returns: (merged_properties_dict, required_list)
+        """
+        merged_properties = {}
+        merged_required_set = set()
+        
+        # Only merge for allOf - anyOf/oneOf are discriminated unions
+        if "allOf" in schema:
+            for item in schema["allOf"]:
+                # Resolve references if needed
+                resolved_item = item
+                if "$ref" in item and ref_resolver:
+                    try:
+                        resolved_item = ref_resolver.resolve_ref(item["$ref"])
+                    except Exception:
+                        continue
+                
+                # Merge properties from this item (make a copy to avoid modification issues)
+                if "properties" in resolved_item:
+                    for prop_name, prop_schema in resolved_item["properties"].items():
+                        # Make a copy to avoid shared references
+                        merged_properties[prop_name] = prop_schema.copy() if isinstance(prop_schema, dict) else prop_schema
+                
+                # Merge required fields (use set to deduplicate)
+                if "required" in resolved_item:
+                    merged_required_set.update(resolved_item["required"])
+        
+        return merged_properties, list(merged_required_set)
+
+    @staticmethod
     def _generate_interface(
         schema: Dict[str, Any],
         ref_resolver: Optional[SchemaRefResolver] = None,
@@ -275,6 +314,17 @@ class TypeScriptGenerator:
             title = "Root"
 
         description = schema.get("description", "")
+        properties = dict(schema.get("properties", {})) if schema.get("properties") else {}
+        required = schema.get("required", [])
+
+        # Merge properties from composed schemas (allOf, anyOf, oneOf)
+        if (not properties or not required) and ("allOf" in schema or "anyOf" in schema or "oneOf" in schema):
+            merged_props, merged_required = TypeScriptGenerator._merge_composed_schema_properties(schema, ref_resolver)
+            if merged_props:
+                properties = dict(merged_props)  # Make a complete copy
+            if merged_required:
+                required = merged_required
+
         output = []
 
         # Handle enum type
@@ -337,9 +387,9 @@ class TypeScriptGenerator:
 
         output.append(f"export interface {title} {{")
 
-        for prop_name, prop_schema in schema.get("properties", {}).items():
+        for prop_name, prop_schema in properties.items():
             prop_desc = prop_schema.get("description", "")
-            is_required = prop_name in schema.get("required", [])
+            is_required = prop_name in required
             field_suffix = "" if is_required else "?"
 
             if prop_desc:
@@ -543,7 +593,7 @@ class TypeScriptGenerator:
                 item_type = TypeScriptGenerator._get_ts_type(
                     items, f"{name}Item", ref_resolver
                 )
-                return f"{item_type}[]"
+                return f"({item_type})[]"
         elif schema_type == "object":
             if "properties" in prop_schema:
                 # For nested objects with defined properties

@@ -8,6 +8,7 @@ from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
     process_definitions_and_nested_types,
+    to_pascal_case,
 )
 
 
@@ -29,9 +30,9 @@ class PythonGenerator:
 
         # Track already processed types to avoid duplicates
         processed_types = set()
-
-        # Track used external types
-        used_external_types = set()
+        
+        # Track all external references found in the schema (for imports)
+        external_refs = set()
 
         # Add header comment
         header = [Writer.generate_header_comment("python")]
@@ -42,16 +43,193 @@ class PythonGenerator:
             "from datetime import datetime, date, time, timedelta",
         ]
 
+        # Collect all external references from the schema before generating
+        def collect_refs(sch: Dict[str, Any], resolved_refs: Optional[set] = None) -> None:
+            """Recursively collect all $ref fields from schema, including nested refs in resolved schemas"""
+            if resolved_refs is None:
+                resolved_refs = set()
+            if not isinstance(sch, dict):
+                return
+            
+            # Check direct $ref
+            if "$ref" in sch and not sch["$ref"].startswith("#"):
+                external_refs.add(sch["$ref"])
+                # Also resolve this reference and collect refs from within it
+                if ref_resolver and sch["$ref"] not in resolved_refs:
+                    try:
+                        resolved_refs.add(sch["$ref"])
+                        resolved = ref_resolver.resolve_ref(sch["$ref"])
+                        if isinstance(resolved, dict):
+                            collect_refs(resolved, resolved_refs)
+                    except Exception:
+                        pass
+            
+            # Check properties
+            for _, prop_schema in sch.get("properties", {}).items():
+                collect_refs(prop_schema, resolved_refs)
+            
+            # Check array items
+            if "items" in sch:
+                collect_refs(sch["items"], resolved_refs)
+            
+            # Check composition keywords
+            for comp_key in ["allOf", "anyOf", "oneOf"]:
+                if comp_key in sch:
+                    for item in sch[comp_key]:
+                        collect_refs(item, resolved_refs)
+            
+            # Check definitions
+            for _, def_schema in sch.get("definitions", {}).items():
+                collect_refs(def_schema, resolved_refs)
+        
+        collect_refs(schema)
+        
+        # When schemas use allOf to merge properties from other schemas,
+        # we need to import any nested types defined in those referenced modules
+        # Get nested types by analyzing merged schemas from allOf
+        nested_types_from_refs = {}  # module -> set of type names
+        
+        for comp_key in ["allOf", "anyOf", "oneOf"]:
+            if comp_key in schema:
+                for item in schema[comp_key]:
+                    if isinstance(item, dict) and "$ref" in item:
+                        ref_path = item["$ref"]
+                        if not ref_path.startswith("#") and ref_resolver:
+                            try:
+                                module_name = ref_path.replace(".yaml", "").replace(".json", "")
+                                resolved = ref_resolver.resolve_ref(ref_path)
+                                
+                                if isinstance(resolved, dict):
+                                    # Get the main type name from the resolved schema's title
+                                    # Use consistent to_pascal_case normalization
+                                    main_type_title_raw = resolved.get("title", "")
+                                    if main_type_title_raw:
+                                        main_type_title = to_pascal_case(main_type_title_raw)
+                                    else:
+                                        import os
+                                        main_type_title = to_pascal_case(os.path.splitext(os.path.basename(ref_path))[0])
+                                    
+                                    # Now collect nested types by looking at properties
+                                    # Use property names (via to_pascal_case) like schema_helpers does, not titles
+                                    nested_types = set()
+                                    for prop_name, prop_schema in resolved.get("properties", {}).items():
+                                        if isinstance(prop_schema, dict):
+                                            # Check for inline objects with properties
+                                            if prop_schema.get("type") == "object" and "properties" in prop_schema:
+                                                # Always use property name, matching schema_helpers behavior
+                                                type_name = to_pascal_case(prop_name)
+                                                nested_types.add(type_name)
+                                            
+                                            # Check for array items
+                                            elif prop_schema.get("type") == "array" and "items" in prop_schema:
+                                                items = prop_schema["items"]
+                                                if isinstance(items, dict) and items.get("type") == "object":
+                                                    # Array items generate {PropName}Item type name
+                                                    type_name = f"{to_pascal_case(prop_name)}Item"
+                                                    nested_types.add(type_name)
+                                                    # Also check nested objects within array items
+                                                    for item_prop_name, item_prop_schema in items.get("properties", {}).items():
+                                                        if isinstance(item_prop_schema, dict) and item_prop_schema.get("type") == "object" and "properties" in item_prop_schema:
+                                                            # Use property name like schema_helpers does
+                                                            nested_type_name = to_pascal_case(item_prop_name)
+                                                            nested_types.add(nested_type_name)
+                                    
+                                    if nested_types:
+                                        nested_types_from_refs[module_name] = nested_types
+                            except Exception:
+                                pass
+        
+        # Check properties for allOf patterns too (not just root-level)
+        for prop_name, prop_schema in schema.get("properties", {}).items():
+            if isinstance(prop_schema, dict):
+                # Check array items with allOf
+                if prop_schema.get("type") == "array" and "items" in prop_schema:
+                    items = prop_schema["items"]
+                    if isinstance(items, dict) and "allOf" in items:
+                        for allof_item in items.get("allOf", []):
+                            if isinstance(allof_item, dict) and "$ref" in allof_item:
+                                ref_path = allof_item["$ref"]
+                                if not ref_path.startswith("#") and ref_resolver:
+                                    try:
+                                        module_name = ref_path.replace(".yaml", "").replace(".json", "")
+                                        resolved = ref_resolver.resolve_ref(ref_path)
+                                        
+                                        if isinstance(resolved, dict):
+                                            # Collect nested types from this referenced schema
+                                            nested_types = set()
+                                            for ref_prop_name, ref_prop_schema in resolved.get("properties", {}).items():
+                                                if isinstance(ref_prop_schema, dict):
+                                                    if ref_prop_schema.get("type") == "object" and "properties" in ref_prop_schema:
+                                                        # Use property name like schema_helpers does
+                                                        type_name = to_pascal_case(ref_prop_name)
+                                                        nested_types.add(type_name)
+                                                    
+                                                    elif ref_prop_schema.get("type") == "array" and "items" in ref_prop_schema:
+                                                        ref_items = ref_prop_schema["items"]
+                                                        if isinstance(ref_items, dict) and ref_items.get("type") == "object" and "properties" in ref_items:
+                                                            # Array items are named {PropName}Item
+                                                            type_name = f"{to_pascal_case(ref_prop_name)}Item"
+                                                            nested_types.add(type_name)
+                                                    
+                                                    # Also check for composition keywords (anyOf, oneOf) with inline objects
+                                                    for comp_key in ["anyOf", "oneOf"]:
+                                                        if comp_key in ref_prop_schema:
+                                                            for i, schema_option in enumerate(ref_prop_schema[comp_key]):
+                                                                if isinstance(schema_option, dict) and schema_option.get("type") == "object" and "properties" in schema_option:
+                                                                    # Use property name for inline objects in composition, like schema_helpers does
+                                                                    type_name = to_pascal_case(ref_prop_name)
+                                                                    nested_types.add(type_name)
+                                            
+                                            if nested_types:
+                                                nested_types_from_refs[module_name] = nested_types
+                                    except Exception:
+                                        pass
+        
+        # Generate imports from collected external references
+        # Only import the main type from each referenced schema
+        # Nested types should be referenced within their parent module as needed
+        for ref_path in sorted(external_refs):
+            # Convert ref path to module and type name
+            import os
+            filename = os.path.basename(ref_path)
+            base_name = os.path.splitext(filename)[0]
+            
+            # Import type name in PascalCase (using the schema's actual title via resolver)
+            # Try to get the actual type name from the schema to handle acronyms correctly
+            actual_type_name = to_pascal_case(base_name)
+            
+            if ref_resolver:
+                try:
+                    resolved_schema = ref_resolver.resolve_ref(ref_path)
+                    if isinstance(resolved_schema, dict):
+                        # Use consistent to_pascal_case normalization for schema titles
+                        schema_title = resolved_schema.get("title", "")
+                        if schema_title:
+                            actual_type_name = to_pascal_case(schema_title)
+                except Exception:
+                    pass
+            
+            # Module name in snake_case
+            module_name = ref_path.replace(".yaml", "").replace(".json", "")
+            
+            import_stmt = f"from .{module_name} import {actual_type_name}"
+            imports.append(import_stmt)
+            
+            # Also import nested types from this module if we identified any
+            if module_name in nested_types_from_refs:
+                for nested_type in sorted(nested_types_from_refs[module_name]):
+                    if nested_type != actual_type_name:  # Don't duplicate the main type
+                        nested_import = f"from .{module_name} import {nested_type}"
+                        if nested_import not in imports:
+                            imports.append(nested_import)
+                        # Mark this imported nested type as already processed so it won't be generated locally
+                        processed_types.add(nested_type)
+
         # Scan for and generate imports from external references
         if ref_resolver and schema_file is not None:
             PythonGenerator._find_used_external_types(
-                schema, ref_resolver, used_external_types
+                schema, ref_resolver, set()  # We already have external_refs, just for compatibility
             )
-            if used_external_types:
-                ext_imports = PythonGenerator._generate_imports(
-                    ref_resolver, schema_file, used_external_types
-                )
-                imports.extend(ext_imports)
 
         # Add enum import if schema contains an enum
         if "enum" in schema:
@@ -78,7 +256,8 @@ class PythonGenerator:
             else:
                 imports.append("from dataclasses import dataclass, field")
 
-        output = header + ["\n".join(imports), ""]
+        # Don't build output with imports yet - we'll add them later after collecting all imports
+        output = []
 
         # Process definitions but skip any that are imported from external references
         def type_callback(sch, name):
@@ -109,8 +288,6 @@ class PythonGenerator:
                         "#"
                     ):
                         # Convert property name to PascalCase to match potential type name
-                        from ..util.schema_helpers import to_pascal_case
-
                         potential_type_name = to_pascal_case(prop_name)
                         if potential_type_name == name:
                             return None
@@ -128,10 +305,14 @@ class PythonGenerator:
         output += definition_outputs
 
         # Process root type - but skip if it's imported
-        # Get the root type title
-        root_title = schema.get("title", "").replace(" ", "")
-        if not root_title:
+        # Get the root type title using consistent normalization
+        root_title = schema.get("title", "")
+        if root_title:
+            root_title = to_pascal_case(root_title)
+        else:
             root_title = "Root"
+        
+        root_type_is_model = False
 
         # Check if it's imported
         imported_types = [
@@ -148,8 +329,22 @@ class PythonGenerator:
             )
             if root_type:
                 output.append(root_type)
+                # Track if the root type is a BaseModel (not a Union alias or enum)
+                if "BaseModel" in root_type:
+                    root_type_is_model = True
+        
+        # Add model_rebuild() call for complex models with forward references
+        # This is needed when using 'from __future__ import annotations'
+        # Add it when the root type is a BaseModel and there are nested/definition types
+        if use_pydantic and root_type_is_model and definition_outputs:
+            output.append(f"{root_title}.model_rebuild()")
 
-        return "\n\n".join(output)
+        # Add future annotations import at the very beginning for forward references
+        imports.insert(0, "from __future__ import annotations")
+        
+        # Prepend header and imports to output
+        final_output = header + ["\n".join(imports), ""] + output
+        return "\n\n".join(final_output)
 
     @staticmethod
     def _find_used_external_types(
@@ -182,7 +377,7 @@ class PythonGenerator:
                         if isinstance(ref_schema, dict):
                             title = ref_schema.get("title", "")
                             if title:
-                                title = title.replace(" ", "")
+                                title = title.replace(" ", "").replace("-", "_")
                                 used_external_types.add(title)
 
                         # Process nested references
@@ -216,10 +411,29 @@ class PythonGenerator:
                             process_ref(items["$ref"], external_refs)
                         elif "properties" in items:
                             process_schema(items, external_refs)
+                        # Check for anyOf, oneOf, allOf in array items
+                        for schema_key in ["anyOf", "oneOf", "allOf"]:
+                            if schema_key in items:
+                                for sub_schema in items[schema_key]:
+                                    if isinstance(sub_schema, dict):
+                                        if "$ref" in sub_schema:
+                                            process_ref(sub_schema["$ref"], external_refs)
+                                        elif "properties" in sub_schema:
+                                            process_schema(sub_schema, external_refs)
 
                 # Check for nested objects that might have references
                 if prop_schema.get("type") == "object" and "properties" in prop_schema:
                     process_schema(prop_schema, external_refs)
+
+                # Check for anyOf, oneOf, allOf
+                for schema_key in ["anyOf", "oneOf", "allOf"]:
+                    if schema_key in prop_schema:
+                        for sub_schema in prop_schema[schema_key]:
+                            if isinstance(sub_schema, dict):
+                                if "$ref" in sub_schema:
+                                    process_ref(sub_schema["$ref"], external_refs)
+                                elif "properties" in sub_schema:
+                                    process_schema(sub_schema, external_refs)
 
             # Process any definitions
             for def_schema in current_schema.get("definitions", {}).values():
@@ -227,6 +441,16 @@ class PythonGenerator:
                     process_ref(def_schema["$ref"], external_refs)
                 elif isinstance(def_schema, dict):
                     process_schema(def_schema, external_refs)
+
+            # Handle composition keywords at root level (allOf, anyOf, oneOf)
+            for comp_key in ["allOf", "anyOf", "oneOf"]:
+                if comp_key in current_schema:
+                    for item in current_schema[comp_key]:
+                        if isinstance(item, dict):
+                            if "$ref" in item:
+                                process_ref(item["$ref"], external_refs)
+                            elif "properties" in item:
+                                process_schema(item, external_refs)
 
         # Start processing with the root schema
         process_schema(schema, ref_resolver.external_refs)
@@ -248,6 +472,8 @@ class PythonGenerator:
             # Clean up the ref path to get just the base filename
             ref_path = ref_path.replace("./", "").replace("../", "")
             basename = os.path.splitext(os.path.basename(ref_path))[0]
+            # Sanitize basename to use underscores instead of hyphens (valid Python module names)
+            basename = basename.replace("-", "_")
             import_stmt = f"from .{basename} import {type_name}"
 
             if import_stmt not in processed_imports:
@@ -271,9 +497,10 @@ class PythonGenerator:
                 try:
                     ref_schema = ref_resolver.resolve_ref(ref_path)
                     if ref_schema and isinstance(ref_schema, dict):
-                        # First check if it has a title
-                        title = ref_schema.get("title", "").replace(" ", "")
-                        if title:
+                        # First check if it has a title using consistent normalization
+                        title_raw = ref_schema.get("title", "")
+                        if title_raw:
+                            title = to_pascal_case(title_raw)
                             if (
                                 used_external_types is None
                                 or title in used_external_types
@@ -314,6 +541,16 @@ class PythonGenerator:
                 if prop_schema.get("type") == "object" and "properties" in prop_schema:
                     process_schema(prop_schema)
 
+            # Handle composition keywords (allOf, anyOf, oneOf) at any level
+            for comp_key in ["allOf", "anyOf", "oneOf"]:
+                if comp_key in schema:
+                    for item in schema[comp_key]:
+                        if isinstance(item, dict):
+                            if "$ref" in item:
+                                process_ref(item["$ref"])
+                            elif "properties" in item:
+                                process_schema(item)
+
         # Process schema and its definitions
         for ref_path, schema_path in ref_resolver.external_refs.items():
             type_name = ref_resolver.external_ref_types.get(schema_path, "")
@@ -327,10 +564,128 @@ class PythonGenerator:
 
         # Process all referenced schemas
         if ref_resolver.loaded_schemas:
-            for schema in ref_resolver.loaded_schemas.values():
+            # Create a snapshot of loaded schemas to avoid "dictionary changed size" error
+            # when resolve_ref() adds new schemas during iteration
+            loaded_schemas_snapshot = list(ref_resolver.loaded_schemas.values())
+            for schema in loaded_schemas_snapshot:
                 process_schema(schema)
 
         return sorted(imports)
+
+    @staticmethod
+    def _extract_type_names_from_code(code: str) -> Set[str]:
+        """Extract referenced type names (PascalCase identifiers) from generated code"""
+        import re
+        type_names = set()
+        
+        # Remove docstrings and comments from code before extracting type names
+        # This avoids extracting words from documentation
+        lines = code.split('\n')
+        cleaned_lines = []
+        in_docstring = False
+        
+        for line in lines:
+            # Skip lines that are comments
+            if line.strip().startswith('#'):
+                continue
+            
+            # Track docstrings
+            if '"""' in line or "'''" in line:
+                in_docstring = not in_docstring
+                continue
+            
+            # Skip lines inside docstrings
+            if not in_docstring:
+                cleaned_lines.append(line)
+        
+        cleaned_code = '\n'.join(cleaned_lines)
+        
+        # Now find PascalCase identifiers that appear after colons or commas or equals
+        # to ensure they're type annotations, not regular words
+        # Allow optional whitespace after the delimiter
+        pascal_case_pattern = r'(?:[:\[\],=])\s*([A-Z][a-zA-Z0-9_]*)'
+        
+        # Built-in and common types to exclude
+        builtins = {
+            'Union', 'Optional', 'List', 'Dict', 'Any', 'Literal', 'Annotated',
+            'Field', 'BaseModel', 'Enum', 'Config', 'Tuple', 'Set', 'AnyUrl',
+            'EmailStr', 'Annotated', 'Json', 'IPv4Address', 'IPv6Address',
+            'UUID', 'URL', 'HttpUrl', 'PostgresDsn', 'RedisDsn',
+            'MongoDBDsn', 'ElasticsearchDsn', 'KafkaDsn', 'None'
+        }
+        
+        for match in re.finditer(pascal_case_pattern, cleaned_code):
+            name = match.group(1)
+            if name not in builtins:
+                type_names.add(name)
+        
+        return type_names
+
+    @staticmethod
+    def _add_imports_for_referenced_types(
+        code: str, imports: List[str], ref_resolver: Optional[SchemaRefResolver] = None
+    ) -> List[str]:
+        """Add imports for any type references found in the generated code"""
+        type_names = PythonGenerator._extract_type_names_from_code(code)
+        
+        # Get already imported types
+        imported_types = set()
+        for imp in imports:
+            if " import " in imp:
+                # Extract the type name from "from ... import TypeName"
+                parts = imp.split(" import ")
+                if len(parts) == 2:
+                    imported_types.add(parts[1].strip())
+        
+        # Add imports for referenced types that aren't already imported
+        for type_name in sorted(type_names):
+            if type_name not in imported_types:
+                # Convert type name to module name (PascalCase -> snake_case)
+                module_name = re.sub(r'(?<!^)(?=[A-Z])', '_', type_name).lower()
+                import_stmt = f"from .{module_name} import {type_name}"
+                
+                # Check if this import is already in the list (case-insensitive)
+                if not any(imp.lower() == import_stmt.lower() for imp in imports):
+                    imports.append(import_stmt)
+                    imported_types.add(type_name)
+        
+        return imports
+
+    @staticmethod
+    def _merge_composed_schema_properties(
+        schema: Dict[str, Any],
+        ref_resolver: Optional[SchemaRefResolver] = None,
+    ) -> tuple[Dict[str, Any], list]:
+        """
+        Merge properties from allOf at the root level only.
+        anyOf/oneOf are discriminated unions and should NOT merge properties.
+        Returns: (merged_properties_dict, required_list)
+        """
+        merged_properties = {}
+        merged_required_set = set()
+        
+        # Only merge for allOf - anyOf/oneOf are discriminated unions
+        if "allOf" in schema:
+            for item in schema["allOf"]:
+                # Resolve references if needed
+                resolved_item = item
+                if "$ref" in item and ref_resolver:
+                    try:
+                        resolved_item = ref_resolver.resolve_ref(item["$ref"])
+                    except Exception:
+                        continue
+                
+                # Merge properties from this item (make a copy to avoid modification issues)
+                if "properties" in resolved_item:
+                    for prop_name, prop_schema in resolved_item["properties"].items():
+                        # Make a deep copy to avoid shared references
+                        merged_properties[prop_name] = prop_schema.copy() if isinstance(prop_schema, dict) else prop_schema
+                
+                # Merge required fields (use set to deduplicate)
+                if "required" in resolved_item:
+                    merged_required_set.update(resolved_item["required"])
+        
+        return merged_properties, list(merged_required_set)
 
     @staticmethod
     def _generate_type(
@@ -343,12 +698,29 @@ class PythonGenerator:
         if processed_types is None:
             processed_types = set()
 
-        title = schema.get("title", "").replace(" ", "")
-        if not title:
+        from ..util.schema_helpers import to_pascal_case
+        
+        # Always normalize titles using to_pascal_case for consistency
+        # This handles conversion of snake_case, spaces, hyphens, and dots uniformly
+        title_str = schema.get("title", "")
+        if title_str:
+            # Always use to_pascal_case to ensure consistent normalization
+            # regardless of whether title has spaces, hyphens, dots, etc.
+            title = to_pascal_case(title_str)
+        else:
             title = "Root"
 
         description = schema.get("description", "")
         required = schema.get("required", [])
+        properties = dict(schema.get("properties", {})) if schema.get("properties") else {}
+
+        # Merge properties from composed schemas (allOf, anyOf, oneOf)
+        if (not properties or not required) and ("allOf" in schema or "anyOf" in schema or "oneOf" in schema):
+            merged_props, merged_required = PythonGenerator._merge_composed_schema_properties(schema, ref_resolver)
+            if merged_props:
+                properties = dict(merged_props)  # Make a complete copy
+            if merged_required:
+                required = merged_required
 
         # Handle enum type
         if "enum" in schema:
@@ -373,6 +745,8 @@ class PythonGenerator:
                     return "\n".join(output)
                 for i, value in enumerate(enum_values):
                     enum_name = enum_member_name(enum_names, value, i, title)
+                    # Sanitize enum name to ensure valid Python identifier: replace hyphens and dots with underscores
+                    enum_name = enum_name.replace("-", "_").replace(".", "_")
                     desc = enum_member_desc(enum_descriptions, value, i)
                     if isinstance(value, str):
                         output.append(f"    {enum_name} = '{value}'")
@@ -393,6 +767,8 @@ class PythonGenerator:
                     return "\n".join(output)
                 for i, value in enumerate(enum_values):
                     enum_name = enum_member_name(enum_names, value, i, title)
+                    # Sanitize enum name to ensure valid Python identifier: replace hyphens and dots with underscores
+                    enum_name = enum_name.replace("-", "_").replace(".", "_")
                     desc = enum_member_desc(enum_descriptions, value, i)
                     if isinstance(value, str):
                         output.append(f"    {enum_name} = '{value}'")
@@ -406,17 +782,65 @@ class PythonGenerator:
 
         if use_pydantic:
             output = []
+            
+            # Handle discriminated unions (anyOf/oneOf with no properties)
+            if not properties and not required and ("anyOf" in schema or "oneOf" in schema):
+                union_key = "anyOf" if "anyOf" in schema else "oneOf"
+                union_items = schema.get(union_key, [])
+                
+                # Generate union types from all items (both $ref and inline)
+                # Only generate Union if we have items to include
+                if union_items:
+                    union_types = []
+                    for item in union_items:
+                        if isinstance(item, dict):
+                            if "$ref" in item:
+                                ref_path = item["$ref"]
+                                # Extract the type name from the reference
+                                if not ref_path.startswith("#"):
+                                    # External reference
+                                    import os
+                                    filename = os.path.basename(ref_path)
+                                    base_name = os.path.splitext(filename)[0]
+                                    type_name = to_pascal_case(base_name)
+                                else:
+                                    # Internal reference (#/definitions/...)
+                                    type_name = ref_path.split("/")[-1]
+                                union_types.append(type_name)
+                            elif "enum" in item:
+                                # Handle inline enum values
+                                enum_values = item.get("enum", [])
+                                if enum_values:
+                                    if all(isinstance(val, str) for val in enum_values):
+                                        # String enums: use Literal type
+                                        literal_values = ", ".join(f'"{val}"' for val in enum_values)
+                                        union_types.append(f"Literal[{literal_values}]")
+                                    else:
+                                        # Non-string enums: use Union of the values
+                                        if len(enum_values) == 1:
+                                            union_types.append(repr(enum_values[0]))
+                                        else:
+                                            union_vals = ", ".join(repr(val) for val in enum_values)
+                                            union_types.append(f"Union[{union_vals}]")
+                    
+                    # Return a type alias instead of a class
+                    if union_types:
+                        return f"{title} = Union[{', '.join(union_types)}]"
+            
             output.append(f"class {title}(BaseModel):")
 
             # Add class docstring under the class declaration with proper indentation
             if description:
                 output.append(f'    """{description}"""')
 
-            if not schema.get("properties"):
+            if not properties:
                 output.append("    pass")
                 return "\n".join(output)
 
-            for prop_name, prop_schema in schema.get("properties", {}).items():
+            for prop_name, prop_schema in properties.items():
+                # Sanitize property names that contain dots or hyphens
+                safe_prop_name = prop_name.replace(".", "_").replace("-", "_")
+                
                 field_type = PythonGenerator._get_python_type(
                     prop_schema, prop_name, use_pydantic, ref_resolver
                 )
@@ -453,8 +877,13 @@ class PythonGenerator:
 
                 # Handle description
                 if field_desc:
-                    # Escape quotes in field descriptions to avoid syntax errors
-                    field_desc = field_desc.replace('"', '\\"')
+                    # Remove newlines and escape quotes in field descriptions to avoid syntax errors
+                    # But avoid double-escaping already escaped quotes
+                    field_desc = field_desc.replace("\n", " ")
+                    # Only escape unescaped quotes (quotes not preceded by backslash)
+                    field_desc = field_desc.replace('\\"', '\x00')  # Temporarily replace escaped quotes
+                    field_desc = field_desc.replace('"', '\\"')      # Escape unescaped quotes
+                    field_desc = field_desc.replace('\x00', '\\"')   # Restore the originally escaped quotes
                     field_params.append(f'description="{field_desc}"')
 
                 # Handle min/max constraints
@@ -467,6 +896,10 @@ class PythonGenerator:
                 if exclusive_max is not None:
                     field_params.append(f"lt={exclusive_max}")
 
+                # Add alias if property name was sanitized
+                if safe_prop_name != prop_name:
+                    field_params.append(f"alias='{prop_name}'")
+
                 # Combine field params
                 field_param_str = ", ".join(field_params)
 
@@ -477,23 +910,23 @@ class PythonGenerator:
                             # For mutable defaults, we don't set an explicit default on the field
                             # since we're using default_factory in Field()
                             output.append(
-                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})]"
+                                f"    {safe_prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})]"
                             )
                         elif isinstance(default_value, str):
                             output.append(
-                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {repr(default_value)}"
+                                f"    {safe_prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {repr(default_value)}"
                             )
                         else:
                             output.append(
-                                f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {default_value}"
+                                f"    {safe_prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = {default_value}"
                             )
                     else:
                         output.append(
-                            f"    {prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = None"
+                            f"    {safe_prop_name}: Annotated[Optional[{field_type}], Field({field_param_str})] = None"
                         )
                 else:
                     output.append(
-                        f"    {prop_name}: Annotated[{field_type}, Field({field_param_str})]"
+                        f"    {safe_prop_name}: Annotated[{field_type}, Field({field_param_str})]"
                     )
 
                 # Add field docstring with proper indentation
@@ -505,6 +938,35 @@ class PythonGenerator:
             output.extend(["", "    class Config:", '        extra = "ignore"'])
         else:
             output = []
+            
+            # Handle pure discriminated unions (anyOf/oneOf with only $ref items and no properties)
+            if not properties and not required and ("anyOf" in schema or "oneOf" in schema):
+                union_key = "anyOf" if "anyOf" in schema else "oneOf"
+                union_items = schema.get(union_key, [])
+                
+                # Check if all items are $ref (pure discriminated union)
+                if all(isinstance(item, dict) and "$ref" in item for item in union_items):
+                    # Generate a Union type alias
+                    union_types = []
+                    for item in union_items:
+                        if "$ref" in item:
+                            ref_path = item["$ref"]
+                            # Extract the type name from the reference
+                            if not ref_path.startswith("#"):
+                                # External reference
+                                import os
+                                filename = os.path.basename(ref_path)
+                                base_name = os.path.splitext(filename)[0]
+                                type_name = to_pascal_case(base_name)
+                            else:
+                                # Internal reference (#/definitions/...)
+                                type_name = ref_path.split("/")[-1]
+                            union_types.append(type_name)
+                    
+                    # Return a type alias instead of a class
+                    if union_types:
+                        return f"{title} = Union[{', '.join(union_types)}]"
+            
             output.append("@dataclass")
             output.append(f"class {title}:")
 
@@ -512,11 +974,14 @@ class PythonGenerator:
             if description:
                 output.append(f'    """{description}"""')
 
-            if not schema.get("properties"):
+            if not properties:
                 output.append("    pass")
                 return "\n".join(output)
 
-            for prop_name, prop_schema in schema.get("properties", {}).items():
+            for prop_name, prop_schema in properties.items():
+                # Sanitize property names that contain dots or hyphens
+                safe_prop_name = prop_name.replace(".", "_").replace("-", "_")
+                
                 field_type = PythonGenerator._get_python_type(
                     prop_schema, prop_name, use_pydantic, ref_resolver
                 )
@@ -550,23 +1015,23 @@ class PythonGenerator:
 
                 # Add field with appropriate default value
                 if is_required and default_value is None:
-                    output.append(f"    {prop_name}: {field_type}")
+                    output.append(f"    {safe_prop_name}: {field_type}")
                 else:
                     if default_value is not None:
                         if isinstance(default_value, (list, dict)):
                             output.append(
-                                f"    {prop_name}: {field_type} = field(default_factory=lambda: {repr(default_value)})"
+                                f"    {safe_prop_name}: {field_type} = field(default_factory=lambda: {repr(default_value)})"
                             )
                         elif isinstance(default_value, str):
                             output.append(
-                                f"    {prop_name}: {field_type} = {repr(default_value)}"
+                                f"    {safe_prop_name}: {field_type} = {repr(default_value)}"
                             )
                         else:
                             output.append(
-                                f"    {prop_name}: {field_type} = {default_value}"
+                                f"    {safe_prop_name}: {field_type} = {default_value}"
                             )
                     else:
-                        output.append(f"    {prop_name}: Optional[{field_type}] = None")
+                        output.append(f"    {safe_prop_name}: Optional[{field_type}] = None")
 
                 # Add field docstring with proper indentation
                 if field_desc or constraint_str:
@@ -584,6 +1049,16 @@ class PythonGenerator:
         ref_resolver: Optional[SchemaRefResolver] = None,
     ) -> str:
         """Convert JSON schema type to Python type"""
+        from ..util.schema_helpers import to_pascal_case
+        
+        # Handle inline objects first - if this property is an inline object with properties
+        if prop_schema.get("type") == "object" and "properties" in prop_schema:
+            # For inline objects, always use the property name for the type name.
+            # This ensures consistency with how schema_helpers.process_definitions_and_nested_types
+            # generates the class name. The schema's title field is just documentation.
+            inline_type_name = to_pascal_case(name)
+            return inline_type_name
+        
         # Handle references
         if "$ref" in prop_schema and ref_resolver:
             ref_path = prop_schema["$ref"]
@@ -623,32 +1098,57 @@ class PythonGenerator:
         # Handle oneOf, anyOf, allOf, and not
         if "oneOf" in prop_schema:
             # For oneOf, create a Union type of all possible types
-            types = [
-                PythonGenerator._get_python_type(
-                    schema, f"{name}Option{i}", use_pydantic, ref_resolver
-                )
-                for i, schema in enumerate(prop_schema["oneOf"])
-            ]
+            types = []
+            for i, schema in enumerate(prop_schema["oneOf"]):
+                # Check if this is an inline object definition
+                if isinstance(schema, dict) and schema.get("type") == "object" and "properties" in schema:
+                    # Use the generated class name for this inline object (must match schema_helpers naming)
+                    from ..util.schema_helpers import to_pascal_case
+                    # Match the naming in schema_helpers.py: {PropertyName}Option0, {PropertyName}Option1, etc.
+                    inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
+                    types.append(inline_type_name)
+                else:
+                    types.append(
+                        PythonGenerator._get_python_type(
+                            schema, f"{name}Option{i}", use_pydantic, ref_resolver
+                        )
+                    )
             return f"Union[{', '.join(types)}]"
 
         if "anyOf" in prop_schema:
             # For anyOf, similar to oneOf but semantically different (can match multiple schemas)
-            types = [
-                PythonGenerator._get_python_type(
-                    schema, f"{name}Option{i}", use_pydantic, ref_resolver
-                )
-                for i, schema in enumerate(prop_schema["anyOf"])
-            ]
+            types = []
+            for i, schema in enumerate(prop_schema["anyOf"]):
+                # Check if this is an inline object definition
+                if isinstance(schema, dict) and schema.get("type") == "object" and "properties" in schema:
+                    # Use the generated class name for this inline object (must match schema_helpers naming)
+                    from ..util.schema_helpers import to_pascal_case
+                    # Match the naming in schema_helpers.py: {PropertyName}Option0, {PropertyName}Option1, etc.
+                    inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
+                    types.append(inline_type_name)
+                else:
+                    types.append(
+                        PythonGenerator._get_python_type(
+                            schema, f"{name}Option{i}", use_pydantic, ref_resolver
+                        )
+                    )
             return f"Union[{', '.join(types)}]"
 
         if "allOf" in prop_schema:
             # For allOf, we'd ideally create an intersection type, but Python doesn't have that
-            # So we'll use the most specific type (usually the last one in the allOf list)
-            # This is a simplification - a proper implementation would merge the schemas
+            # Check if the last schema is an inline object definition
             last_schema = prop_schema["allOf"][-1]
-            return PythonGenerator._get_python_type(
-                last_schema, name, use_pydantic, ref_resolver
-            )
+            if isinstance(last_schema, dict) and last_schema.get("type") == "object" and "properties" in last_schema:
+                # Use the generated class name for this inline object (must match schema_helpers naming)
+                from ..util.schema_helpers import to_pascal_case
+                # Match the naming in schema_helpers.py: {PropertyName}Option0, {PropertyName}Option1, etc.
+                # But NOT with "allOf" in the name - allOf merges into a single type
+                inline_type_name = to_pascal_case(name)
+                return inline_type_name
+            else:
+                return PythonGenerator._get_python_type(
+                    last_schema, name, use_pydantic, ref_resolver
+                )
 
         if "not" in prop_schema:
             # Python doesn't have a direct way to represent "not" schemas
@@ -724,8 +1224,13 @@ class PythonGenerator:
                     return f"List[{type_name}]"
 
             # If not a reference or couldn't resolve, use the default behavior
+            # For inline objects with titles, prefer the title; otherwise use {PropertyName}Item
+            item_name = name + "Item"
+            if isinstance(items, dict) and "title" in items:
+                item_name = to_pascal_case(items["title"])
+            
             item_type = PythonGenerator._get_python_type(
-                items, f"{name}Item", use_pydantic, ref_resolver
+                items, item_name, use_pydantic, ref_resolver
             )
             return f"List[{item_type}]"
         elif schema_type == "object":
@@ -774,6 +1279,8 @@ class PythonGenerator:
         # Process each file to extract classes
         for py_file in py_files:
             module_name = os.path.basename(py_file).split(".")[0]
+            # Convert hyphens to underscores to match the actual filename
+            module_name = module_name.replace("-", "_")
             exports[module_name] = set()
 
             try:
@@ -814,6 +1321,8 @@ class PythonGenerator:
         init_content = [
             "# Auto-generated model exports",
             "# This file was automatically generated to export all models for easy importing",
+            "",
+            "from __future__ import annotations",
             "",
         ]
 
@@ -878,8 +1387,10 @@ class PythonGenerator:
         def collect_model_classes(sch):
             if "definitions" in sch:
                 for _, def_schema in sch["definitions"].items():
-                    title = def_schema.get("title", "").replace(" ", "")
-                    if not title:
+                    title_raw = def_schema.get("title", "")
+                    if title_raw:
+                        title = to_pascal_case(title_raw)
+                    else:
                         title = "Root"
                     model_classes.add(title)
 

@@ -488,12 +488,35 @@ class ProtoGenerator:
             nested_type = ProtoGenerator._generate_enum_type(schema, type_name)
             return type_name, is_repeated, nested_type
 
-        # Handle object type (nested message)
+        # Handle object type (nested message or map)
         if schema.get("type") == "object":
-            type_name = to_pascal_case(prop_name)
-
-            # Check if the object has properties
+            # Check if this should be a map instead of a nested message
             has_properties = bool(schema.get("properties", {}))
+            has_additional_properties = "additionalProperties" in schema
+
+            # If object has no properties but has additionalProperties, treat as map
+            if not has_properties and has_additional_properties:
+                additional_props = schema.get("additionalProperties")
+                if additional_props is True:
+                    # Generic map
+                    return "map<string, string>", is_repeated, None
+                elif isinstance(additional_props, dict):
+                    # Typed map based on additionalProperties type
+                    value_type = additional_props.get("type", "string")
+                    if value_type == "string":
+                        return "map<string, string>", is_repeated, None
+                    elif value_type == "integer":
+                        return "map<string, int32>", is_repeated, None
+                    elif value_type == "number":
+                        return "map<string, double>", is_repeated, None
+                    elif value_type == "boolean":
+                        return "map<string, bool>", is_repeated, None
+                    else:
+                        # Default to string for unsupported types
+                        return "map<string, string>", is_repeated, None
+
+            # Otherwise handle as nested message
+            type_name = to_pascal_case(prop_name)
 
             if type_name not in processed_types:
                 # Generate the nested message type

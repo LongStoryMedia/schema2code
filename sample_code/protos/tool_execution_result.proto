@@ -16,14 +16,7 @@ message ToolExecutionResult {
   // Whether execution was successful
   bool success = 3;
   // Result data from the tool
-  message ResultData {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Result data from the tool
-  ResultData result_data = 4;
+  map<string, string> result_data = 4;
   // Error message if execution failed
   string error_message = 5;
   // Execution time in milliseconds

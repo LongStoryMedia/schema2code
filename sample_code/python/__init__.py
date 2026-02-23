@@ -4,8 +4,16 @@
 # Import all model modules
 try:
     from . import analysis_depth
+    from . import apply_patch_call_status
+    from . import apply_patch_create_file_operation
+    from . import apply_patch_delete_file_operation
+    from . import apply_patch_tool_call
+    from . import apply_patch_update_file_operation
     from . import auth_config
     from . import available_tool
+    from . import batch
+    from . import batch_error
+    from . import batch_request_counts
     from . import chat_req
     from . import chat_response
     from . import circuit_breaker_config
@@ -13,6 +21,7 @@ try:
     from . import complexity_level
     from . import config
     from . import conversation
+    from . import conversation_2
     from . import conversation_ctx
     from . import database_config
     from . import dataclass_example
@@ -53,6 +62,7 @@ try:
     from . import message_content_type
     from . import message_role
     from . import message_type
+    from . import metadata
     from . import model
     from . import model_details
     from . import model_parameters
@@ -93,7 +103,6 @@ try:
     from . import summarization_config
     from . import summary
     from . import todo_item
-    from . import todo_item_dataclass
     from . import tool_analysis_request
     from . import tool_analysis_response
     from . import tool_execution_result
@@ -112,8 +121,16 @@ except ImportError as e:
 # Define what gets imported with 'from models import *'
 __all__ = [
     'analysis_depth',
+    'apply_patch_call_status',
+    'apply_patch_create_file_operation',
+    'apply_patch_delete_file_operation',
+    'apply_patch_tool_call',
+    'apply_patch_update_file_operation',
     'auth_config',
     'available_tool',
+    'batch',
+    'batch_error',
+    'batch_request_counts',
     'chat_req',
     'chat_response',
     'circuit_breaker_config',
@@ -121,6 +138,7 @@ __all__ = [
     'complexity_level',
     'config',
     'conversation',
+    'conversation_2',
     'conversation_ctx',
     'database_config',
     'dataclass_example',
@@ -161,6 +179,7 @@ __all__ = [
     'message_content_type',
     'message_role',
     'message_type',
+    'metadata',
     'model',
     'model_details',
     'model_parameters',
@@ -201,7 +220,6 @@ __all__ = [
     'summarization_config',
     'summary',
     'todo_item',
-    'todo_item_dataclass',
     'tool_analysis_request',
     'tool_analysis_response',
     'tool_execution_result',
@@ -214,8 +232,18 @@ __all__ = [
     'web_search_providers',
     'web_socket_connection',
     'AnalysisDepth',
+    'ApplyPatchCallStatus',
+    'ApplyPatchCreateFileOperation',
+    'ApplyPatchDeleteFileOperation',
+    'ApplyPatchToolCall',
+    'ApplyPatchUpdateFileOperation',
     'AuthConfig',
     'AvailableTool',
+    'Batch',
+    'Errors',
+    'Usage',
+    'BatchError',
+    'BatchRequestCounts',
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
@@ -223,6 +251,7 @@ __all__ = [
     'ComplexityLevel',
     'Config',
     'Conversation',
+    'Conversation_2',
     'ConversationCtx',
     'DatabaseConfig',
     'DataClassExample',
@@ -263,6 +292,7 @@ __all__ = [
     'MessageContentType',
     'MessageRole',
     'MessageType',
+    'Metadata',
     'Model',
     'ModelDetails',
     'ModelParameters',
@@ -305,7 +335,6 @@ __all__ = [
     'SummarizationConfig',
     'Summary',
     'TodoItem',
-    'TodoItem',
     'ToolAnalysisRequest',
     'ToolAnalysisResponse',
     'ToolExecutionResult',
@@ -323,11 +352,37 @@ __all__ = [
 from .analysis_depth import (
     AnalysisDepth,
 )
+from .apply_patch_call_status import (
+    ApplyPatchCallStatus,
+)
+from .apply_patch_create_file_operation import (
+    ApplyPatchCreateFileOperation,
+)
+from .apply_patch_delete_file_operation import (
+    ApplyPatchDeleteFileOperation,
+)
+from .apply_patch_tool_call import (
+    ApplyPatchToolCall,
+)
+from .apply_patch_update_file_operation import (
+    ApplyPatchUpdateFileOperation,
+)
 from .auth_config import (
     AuthConfig,
 )
 from .available_tool import (
     AvailableTool,
+)
+from .batch import (
+    Batch,
+    Errors,
+    Usage,
+)
+from .batch_error import (
+    BatchError,
+)
+from .batch_request_counts import (
+    BatchRequestCounts,
 )
 from .chat_req import (
     ChatReq,
@@ -349,6 +404,9 @@ from .config import (
 )
 from .conversation import (
     Conversation,
+)
+from .conversation_2 import (
+    Conversation_2,
 )
 from .conversation_ctx import (
     ConversationCtx,
@@ -470,6 +528,9 @@ from .message_role import (
 from .message_type import (
     MessageType,
 )
+from .metadata import (
+    Metadata,
+)
 from .model import (
     Model,
 )
@@ -590,9 +651,6 @@ from .summary import (
     Summary,
 )
 from .todo_item import (
-    TodoItem,
-)
-from .todo_item_dataclass import (
     TodoItem,
 )
 from .tool_analysis_request import (

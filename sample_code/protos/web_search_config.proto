@@ -5,20 +5,81 @@ syntax = "proto3";
 
 package schema;
 
-import "web_search_providers.proto";
-
-// Web search settings
+// Comprehensive web search settings for SearxNG integration
 message WebSearchConfig {
   // Whether web search is enabled
   bool enabled = 1;
-  // Auto-detect web search
+  // Auto-detect web search needs from user queries
   bool auto_detect = 2;
-  // Maximum number of results
+  // Maximum number of search results to return
   int32 max_results = 3;
-  // Include results in response
+  // Include full search results in response
   bool include_results = 4;
-  // List of search providers to use
-  repeated WebSearchProviders search_providers = 5;
-  // Maximum number of URLs to deep crawl
-  int32 max_urls_deep = 6;
+  // Maximum number of URLs to deep crawl for content extraction
+  int32 max_urls_deep = 5;
+  // List of SearxNG search engines to use
+  repeated string engines = 6;
+  enum CategoriesItemEnum {
+    CATEGORIESITEMENUM_UNSPECIFIED = 0;
+    GENERAL = 1;
+    NEWS = 2;
+    SCIENCE = 3;
+    IT = 4;
+    SHOPPING = 5;
+    IMAGES = 6;
+    VIDEOS = 7;
+    MUSIC = 8;
+    FILES = 9;
+    SOCIAL = 10;
+  }
+  
+
+  // SearxNG search categories to include
+  repeated CategoriesItemEnum categories = 7;
+  // Language for search results
+  enum LanguageEnum {
+    LANGUAGEENUM_UNSPECIFIED = 0;
+    EN = 1;
+    ES = 2;
+    FR = 3;
+    DE = 4;
+    IT = 5;
+    PT = 6;
+    ZH = 7;
+    JA = 8;
+    KO = 9;
+    RU = 10;
+    AR = 11;
+  }
+  
+
+  // Language for search results
+  LanguageEnum language = 8;
+  // Safe search level (0=off, 1=moderate, 2=strict)
+  int32 safesearch = 9;
+  // Time range filter for results
+  enum TimeRangeEnum {
+    TIMERANGEENUM_UNSPECIFIED = 0;
+     = 1;
+    DAY = 2;
+    WEEK = 3;
+    MONTH = 4;
+    YEAR = 5;
+  }
+  
+
+  // Time range filter for results
+  TimeRangeEnum time_range = 10;
+  // SearxNG host URL (defaults to SEARX_HOST environment variable)
+  string searx_host = 11;
+  // Search timeout in seconds
+  double timeout = 12;
+  // Custom User-Agent string for requests
+  string user_agent = 13;
+  // Enable result caching for performance
+  bool enable_caching = 14;
+  // Cache time-to-live in seconds
+  int32 cache_ttl = 15;
+  // Maximum content length to fetch from URLs (in characters)
+  int32 max_content_length = 16;
 }

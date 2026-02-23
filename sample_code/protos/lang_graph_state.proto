@@ -22,12 +22,5 @@ message LangGraphState {
   // List of tools or functions that have been used in the workflow
   repeated string tools_used = 6;
   // Storage for intermediate computation results during workflow execution
-  message IntermediateResults {
-    // This message intentionally left empty or will be extended later
-    reserved 1;
-  }
-  
-
-  // Storage for intermediate computation results during workflow execution
-  IntermediateResults intermediate_results = 7;
+  map<string, string> intermediate_results = 7;
 }

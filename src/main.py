@@ -77,6 +77,8 @@ def generate_types(
             basename = to_pascal_case(basename)
         elif language == "python":
             output_ext = ".py"
+            # For Python, convert hyphens to underscores
+            basename = basename.replace("-", "_")
         elif language == "go":
             output_ext = ".go"
         elif language == "csharp" or language == "dotnet":

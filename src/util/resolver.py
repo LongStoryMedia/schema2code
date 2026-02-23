@@ -53,10 +53,14 @@ class SchemaRefResolver:
                     # Create type name from filename or use schema title
                     type_name = None
                     if "title" in schema:
-                        type_name = schema["title"].replace(" ", "")
+                        # Use consistent to_pascal_case normalization for titles
+                        from .schema_helpers import to_pascal_case
+                        type_name = to_pascal_case(schema["title"])
                     else:
                         filename = os.path.basename(ref_path)
                         base_name = os.path.splitext(filename)[0]
+                        # Convert hyphens to underscores before processing
+                        base_name = base_name.replace("-", "_")
                         type_name = "".join(
                             x.capitalize() for x in base_name.split("_")
                         )
@@ -138,6 +142,9 @@ class SchemaRefResolver:
                 # Remove 'U' prefix if present (to match the filename normalization in main.py)
                 if base_name.startswith("U"):
                     base_name = base_name[1:]
+
+                # Convert hyphens to underscores before processing
+                base_name = base_name.replace("-", "_")
 
                 type_name = "".join(x.capitalize() for x in base_name.split("_"))
 
