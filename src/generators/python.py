@@ -1066,10 +1066,13 @@ class PythonGenerator:
             for i, schema in enumerate(prop_schema["oneOf"]):
                 # Check if this is an inline object definition
                 if isinstance(schema, dict) and schema.get("type") == "object" and "properties" in schema:
-                    # Use the generated class name for this inline object (must match schema_helpers naming)
                     from ..util.schema_helpers import to_pascal_case
-                    # Match the naming in schema_helpers.py: {PropertyName}Option0, {PropertyName}Option1, etc.
-                    inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
+                    # Use schema title if available (matches _generate_type which reads title);
+                    # fall back to {PropertyName}Option{i} pattern (matches schema_helpers fallback)
+                    if "title" in schema:
+                        inline_type_name = to_pascal_case(schema["title"])
+                    else:
+                        inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
                     types.append(inline_type_name)
                 else:
                     types.append(
@@ -1085,10 +1088,13 @@ class PythonGenerator:
             for i, schema in enumerate(prop_schema["anyOf"]):
                 # Check if this is an inline object definition
                 if isinstance(schema, dict) and schema.get("type") == "object" and "properties" in schema:
-                    # Use the generated class name for this inline object (must match schema_helpers naming)
                     from ..util.schema_helpers import to_pascal_case
-                    # Match the naming in schema_helpers.py: {PropertyName}Option0, {PropertyName}Option1, etc.
-                    inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
+                    # Use schema title if available (matches _generate_type which reads title);
+                    # fall back to {PropertyName}Option{i} pattern (matches schema_helpers fallback)
+                    if "title" in schema:
+                        inline_type_name = to_pascal_case(schema["title"])
+                    else:
+                        inline_type_name = f"{to_pascal_case(name)}Option{i}" if i > 0 else to_pascal_case(name)
                     types.append(inline_type_name)
                 else:
                     types.append(

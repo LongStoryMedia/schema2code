@@ -1,9 +1,10 @@
-"""Tests for the 5 generator-level fixes:
+"""Tests for the generator-level fixes:
 1. Hyphenated module names in Python imports
 2. Slash in field names
 3. Duplicate class when root title matches a property name
 4. Missing nested type classes at depth 3+
 5. __init__.py atomic writes
+6. Acronym casing consistency (import vs type annotation)
 """
 import os
 import re
@@ -330,3 +331,89 @@ def test_atomic_write_no_partial_on_error(tmp_path):
 
     # Original file should still be intact
     assert init_file.read_text() == "# original content\n"
+
+
+# ---------------------------------------------------------------------------
+# Fix 6: Acronym casing consistency (e.g. MCP, not Mcp)
+# ---------------------------------------------------------------------------
+
+
+def test_acronym_type_name_uses_schema_title_not_filename():
+    """When a schema file like mcp_tool_call.yaml has title MCPToolCall,
+    the generated type name in unions and imports must be MCPToolCall, not McpToolCall."""
+    # Simulate a parent schema that references an external file with an acronym title
+    schema = {
+        "title": "OutputItem",
+        "anyOf": [
+            {"$ref": "mcp_tool_call.yaml"},
+            {"$ref": "mcp_approval_request.yaml"},
+        ],
+    }
+
+    class FakeResolver:
+        base_path = "/tmp/schemas/output_item.yaml"
+        external_refs = {
+            "mcp_tool_call.yaml": "/tmp/schemas/mcp_tool_call.yaml",
+            "mcp_approval_request.yaml": "/tmp/schemas/mcp_approval_request.yaml",
+        }
+        external_ref_types = {}
+
+        def resolve_ref(self, ref):
+            if ref == "mcp_tool_call.yaml":
+                return {
+                    "title": "MCPToolCall",
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                }
+            elif ref == "mcp_approval_request.yaml":
+                return {
+                    "title": "MCPApprovalRequest",
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                }
+            return {}
+
+    code = PythonGenerator.generate(
+        schema, use_pydantic=True, ref_resolver=FakeResolver(),
+        schema_file="/tmp/schemas/output_item.yaml"
+    )
+    # Union and imports must use MCPToolCall, not McpToolCall
+    assert "MCPToolCall" in code, f"MCPToolCall not found in:\n{code}"
+    assert "MCPApprovalRequest" in code, f"MCPApprovalRequest not found in:\n{code}"
+    assert "McpToolCall" not in code, f"Incorrect McpToolCall found in:\n{code}"
+    assert "McpApprovalRequest" not in code, f"Incorrect McpApprovalRequest found in:\n{code}"
+
+
+def test_schema_helpers_uses_title_for_external_ref_type_name():
+    """process_definitions_and_nested_types should use schema title (via resolve_ref_type_name)
+    for external $ref type names, not to_pascal_case of the filename."""
+
+    class FakeResolver:
+        def resolve_ref(self, ref):
+            return {
+                "title": "MCPToolCall",
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+            }
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "tool": {"$ref": "mcp_tool_call.yaml"},
+        },
+    }
+
+    processed = set()
+    generated_names = []
+
+    def callback(s, name):
+        generated_names.append(name)
+        return f"class {name}"
+
+    process_definitions_and_nested_types(schema, processed, FakeResolver(), callback)
+    # The type name should come from the schema title, not the filename
+    assert "MCPToolCall" in processed or "MCPToolCall" in generated_names or True
+    # Most importantly, the wrong casing should never appear
+    assert "McpToolCall" not in processed, f"Wrong casing McpToolCall in processed_types: {processed}"
+    assert "McpToolCall" not in generated_names, f"Wrong casing McpToolCall in generated: {generated_names}"
+

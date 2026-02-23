@@ -135,7 +135,11 @@ def _process_nested_inline_objects(schema_dict, processed_types, type_callback, 
                     if not isinstance(schema_option, dict):
                         continue
                     if schema_option.get("type") == "object" and "properties" in schema_option:
-                        option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
+                        # Use title if available for consistent naming with _generate_type
+                        if "title" in schema_option:
+                            option_type_name = to_pascal_case(schema_option["title"])
+                        else:
+                            option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
                         if option_type_name not in processed_types:
                             _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
                             nested_schema = schema_option.copy()
@@ -219,10 +223,7 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                                 if ref_path.startswith("#/definitions/"):
                                     type_name = ref_path.split("/")[-1]
                                 elif not ref_path.startswith("#"):
-                                    import os
-                                    filename = os.path.basename(ref_path)
-                                    base_name = os.path.splitext(filename)[0]
-                                    type_name = to_pascal_case(base_name)
+                                    type_name = resolve_ref_type_name(ref_path, ref_resolver)
                                 if type_name in processed_types:
                                     continue
                             except Exception:
@@ -255,10 +256,7 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                 if ref_path.startswith("#/definitions/"):
                     type_name = ref_path.split("/")[-1]
                 elif not ref_path.startswith("#"):
-                    import os
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]
-                    type_name = to_pascal_case(base_name)
+                    type_name = resolve_ref_type_name(ref_path, ref_resolver)
                 if type_name in processed_types:
                     continue
             except Exception:
@@ -289,8 +287,11 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                     # Check if this option is an inline object definition
                     if schema_option.get("type") == "object" and "properties" in schema_option:
                         # Generate a class for this inline object
-                        # Use just the property name + index, not the composition keyword (to avoid AudioanyOfOption0)
-                        option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
+                        # Use title if available for consistent naming with _generate_type
+                        if "title" in schema_option:
+                            option_type_name = to_pascal_case(schema_option["title"])
+                        else:
+                            option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
                         if option_type_name not in processed_types:
                             # Recursively process nested inline objects at any depth
                             _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
