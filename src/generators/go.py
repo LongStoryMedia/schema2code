@@ -10,6 +10,7 @@ from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
     process_definitions_and_nested_types,
+    resolve_ref_type_name,
 )
 
 
@@ -614,11 +615,7 @@ class GoGenerator:
                     type_name = ref_path.split("/")[-1]
                 # For external file references
                 elif not ref_path.startswith("#"):
-                    # Extract the type name from the filename
-                    # e.g., "model_details.json" -> "ModelDetails"
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]  # Remove extension
-                    type_name = "".join(x.capitalize() for x in base_name.split("_"))
+                    type_name = resolve_ref_type_name(ref_path, ref_resolver)
 
                     # Check if this type is already defined in its own file and should be imported
                     # This prevents duplicating types from external references

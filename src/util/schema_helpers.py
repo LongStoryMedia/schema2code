@@ -1,4 +1,6 @@
 # Helper functions for schema2code generators
+import os
+
 
 def to_pascal_case(name: str) -> str:
     """Convert snake_case or lowerCamelCase to PascalCase."""
@@ -18,6 +20,30 @@ def to_camel_case(name: str) -> str:
     s2 = re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
     parts = s2.split('_')
     return parts[0] + ''.join(x.capitalize() for x in parts[1:] if x)
+
+
+def resolve_ref_type_name(ref_path, ref_resolver=None):
+    """Resolve a $ref path to its correct PascalCase type name.
+
+    Uses the referenced schema's title field (via the resolver) when available,
+    falling back to to_pascal_case of the filename. This ensures consistent
+    type naming between imports and type references across all generators.
+    """
+    filename = os.path.basename(ref_path)
+    base_name = os.path.splitext(filename)[0]
+    type_name = to_pascal_case(base_name)
+
+    if ref_resolver:
+        try:
+            resolved_schema = ref_resolver.resolve_ref(ref_path)
+            if isinstance(resolved_schema, dict):
+                schema_title = resolved_schema.get("title", "")
+                if schema_title:
+                    type_name = to_pascal_case(schema_title)
+        except Exception:
+            pass
+
+    return type_name
 
 
 def enum_member_name(enum_names, value, i, title=None):
@@ -53,6 +79,85 @@ def enum_member_desc(enum_descriptions, value, i):
     elif isinstance(enum_descriptions, list) and i < len(enum_descriptions):
         return enum_descriptions[i]
     return None
+
+
+def _process_nested_inline_objects(schema_dict, processed_types, type_callback, output):
+    """Recursively process inline object types nested within a schema's properties at any depth.
+    
+    This walks the properties of the given schema and for each property:
+    - If it's an inline object (type=object with properties): recurse into it first, then generate
+    - If it's an array with inline object items: recurse into items first, then generate
+    - If it has composition keywords (anyOf/oneOf/allOf) with inline objects: handle those too
+    
+    Processing children before parents ensures inner types are defined before they're referenced.
+    """
+    for prop_name, prop_schema in schema_dict.get("properties", {}).items():
+        if not isinstance(prop_schema, dict):
+            continue
+
+        # Handle inline objects with properties
+        if prop_schema.get("type") == "object" and "properties" in prop_schema:
+            type_name = to_pascal_case(prop_name)
+            if type_name not in processed_types:
+                # Recurse first so inner types are defined before outer types
+                _process_nested_inline_objects(prop_schema, processed_types, type_callback, output)
+                nested_schema = prop_schema.copy()
+                nested_schema["title"] = type_name
+                processed_types.add(type_name)
+                type_code = type_callback(nested_schema, type_name)
+                if type_code is not None:
+                    output.append(type_code)
+
+        # Handle array items that are inline objects
+        if prop_schema.get("type") == "array" and "items" in prop_schema:
+            items = prop_schema["items"]
+            if isinstance(items, dict) and items.get("type") == "object" and "properties" in items:
+                # Prefer title if available, otherwise use {PropertyName}Item pattern
+                if "title" in items:
+                    item_type_name = to_pascal_case(items["title"])
+                else:
+                    item_type_name = f"{to_pascal_case(prop_name)}Item"
+                if item_type_name not in processed_types:
+                    # Recurse first
+                    _process_nested_inline_objects(items, processed_types, type_callback, output)
+                    item_schema = items.copy()
+                    if "title" not in item_schema:
+                        item_schema["title"] = item_type_name
+                    processed_types.add(item_type_name)
+                    type_code = type_callback(item_schema, item_type_name)
+                    if type_code is not None:
+                        output.append(type_code)
+
+        # Handle composition keywords (anyOf/oneOf/allOf) with inline objects
+        for comp_key in ["anyOf", "oneOf", "allOf"]:
+            if comp_key in prop_schema:
+                for i, schema_option in enumerate(prop_schema[comp_key]):
+                    if not isinstance(schema_option, dict):
+                        continue
+                    if schema_option.get("type") == "object" and "properties" in schema_option:
+                        option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
+                        if option_type_name not in processed_types:
+                            _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
+                            nested_schema = schema_option.copy()
+                            if "title" not in nested_schema:
+                                nested_schema["title"] = option_type_name
+                            processed_types.add(option_type_name)
+                            type_code = type_callback(nested_schema, option_type_name)
+                            if type_code is not None:
+                                output.append(type_code)
+                    elif schema_option.get("type") == "array" and "items" in schema_option:
+                        items = schema_option["items"]
+                        if isinstance(items, dict) and items.get("type") == "object" and "properties" in items:
+                            option_type_name = f"{to_pascal_case(prop_name)}Option{i}Item"
+                            if option_type_name not in processed_types:
+                                _process_nested_inline_objects(items, processed_types, type_callback, output)
+                                nested_schema = items.copy()
+                                if "title" not in nested_schema:
+                                    nested_schema["title"] = option_type_name
+                                processed_types.add(option_type_name)
+                                type_code = type_callback(nested_schema, option_type_name)
+                                if type_code is not None:
+                                    output.append(type_code)
 
 
 def process_definitions_and_nested_types(schema, processed_types, ref_resolver, type_callback):
@@ -136,21 +241,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                                 if type_code is not None:
                                     output.append(type_code)
                                 
-                                # ALSO process nested inline objects within this inline object
-                                # This handles cases like user_location within web_search_options
-                                for nested_prop_name, nested_prop_schema in resolved_schema.get("properties", {}).items():
-                                    if isinstance(nested_prop_schema, dict):
-                                        # Check for nested inline objects
-                                        if nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                                            nested_nested_type_name = to_pascal_case(nested_prop_name)
-                                            if nested_nested_type_name not in processed_types:
-                                                nested_nested_schema = nested_prop_schema.copy()
-                                                # Always set title to the computed type_name to ensure consistency
-                                                nested_nested_schema["title"] = nested_nested_type_name
-                                                processed_types.add(nested_nested_type_name)
-                                                nested_nested_type_code = type_callback(nested_nested_schema, nested_nested_type_name)
-                                                if nested_nested_type_code is not None:
-                                                    output.append(nested_nested_type_code)
+                                # Recursively process nested inline objects at any depth
+                                _process_nested_inline_objects(resolved_schema, processed_types, type_callback, output)
     
     # Process nested types in properties
     for prop_name, prop_schema in schema.get("properties", {}).items():
@@ -184,54 +276,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
             if type_code is not None:  # Only add non-None returns
                 output.append(type_code)
             
-            # ALSO process nested inline objects within this inline object
-            # This handles cases like data property within api_key.created
-            for nested_prop_name, nested_prop_schema in resolved_schema.get("properties", {}).items():
-                if isinstance(nested_prop_schema, dict):
-                    # Check for nested inline objects
-                    if nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                        nested_nested_type_name = to_pascal_case(nested_prop_name)
-                        if nested_nested_type_name not in processed_types:
-                            nested_nested_schema = nested_prop_schema.copy()
-                            # Always set title to the computed type_name to ensure consistency
-                            nested_nested_schema["title"] = nested_nested_type_name
-                            processed_types.add(nested_nested_type_name)
-                            nested_nested_type_code = type_callback(nested_nested_schema, nested_nested_type_name)
-                            if nested_nested_type_code is not None:
-                                output.append(nested_nested_type_code)
-                    
-                    # ALSO check for array items with inline objects within nested properties
-                    # This handles cases like certificates array within certificates.activated
-                    if nested_prop_schema.get("type") == "array" and "items" in nested_prop_schema:
-                        items = nested_prop_schema["items"]
-                        if isinstance(items, dict) and items.get("type") == "object" and "properties" in items:
-                            # Prefer title if available, otherwise use {PropertyName}Item pattern
-                            if "title" in items:
-                                item_type_name = to_pascal_case(items["title"])
-                            else:
-                                item_type_name = f"{to_pascal_case(nested_prop_name)}Item"
-                            if item_type_name not in processed_types:
-                                # First, process nested objects within this array item inline object
-                                for item_prop_name, item_prop_schema in items.get("properties", {}).items():
-                                    if isinstance(item_prop_schema, dict) and item_prop_schema.get("type") == "object" and "properties" in item_prop_schema:
-                                        item_nested_type_name = to_pascal_case(item_prop_name)
-                                        if item_nested_type_name not in processed_types:
-                                            item_nested_schema = item_prop_schema.copy()
-                                            if "title" not in item_nested_schema:
-                                                item_nested_schema["title"] = item_nested_type_name
-                                            processed_types.add(item_nested_type_name)
-                                            item_nested_type_code = type_callback(item_nested_schema, item_nested_type_name)
-                                            if item_nested_type_code is not None:
-                                                output.append(item_nested_type_code)
-                                
-                                # Now add the array item inline object itself
-                                item_schema = items.copy()
-                                if "title" not in item_schema:
-                                    item_schema["title"] = item_type_name
-                                processed_types.add(item_type_name)
-                                type_code = type_callback(item_schema, item_type_name)
-                                if type_code is not None:
-                                    output.append(type_code)
+            # Recursively process nested inline objects at any depth
+            _process_nested_inline_objects(resolved_schema, processed_types, type_callback, output)
         
         # Process anyOf, oneOf, allOf for inline object definitions
         for comp_key in ["anyOf", "oneOf", "allOf"]:
@@ -246,19 +292,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                         # Use just the property name + index, not the composition keyword (to avoid AudioanyOfOption0)
                         option_type_name = f"{to_pascal_case(prop_name)}Option{i}" if i > 0 else to_pascal_case(prop_name)
                         if option_type_name not in processed_types:
-                            # First, process nested objects within this inline object
-                            # and add them BEFORE the parent inline object
-                            for nested_prop_name, nested_prop_schema in schema_option.get("properties", {}).items():
-                                if isinstance(nested_prop_schema, dict) and nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                                    nested_class_name = to_pascal_case(nested_prop_name)
-                                    if nested_class_name not in processed_types:
-                                        nested_class_schema = nested_prop_schema.copy()
-                                        if "title" not in nested_class_schema:
-                                            nested_class_schema["title"] = nested_class_name
-                                        processed_types.add(nested_class_name)
-                                        nested_type_code = type_callback(nested_class_schema, nested_class_name)
-                                        if nested_type_code is not None:
-                                            output.append(nested_type_code)
+                            # Recursively process nested inline objects at any depth
+                            _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
                             
                             # Now add the inline object itself
                             nested_schema = schema_option.copy()
@@ -276,19 +311,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                             # Generate a class for the array item inline object
                             option_type_name = f"{to_pascal_case(prop_name)}Option{i}Item"
                             if option_type_name not in processed_types:
-                                # First, process nested objects within this inline object
-                                # and add them BEFORE the parent inline object
-                                for nested_prop_name, nested_prop_schema in items.get("properties", {}).items():
-                                    if isinstance(nested_prop_schema, dict) and nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                                        nested_class_name = to_pascal_case(nested_prop_name)
-                                        if nested_class_name not in processed_types:
-                                            nested_class_schema = nested_prop_schema.copy()
-                                            if "title" not in nested_class_schema:
-                                                nested_class_schema["title"] = nested_class_name
-                                            processed_types.add(nested_class_name)
-                                            nested_type_code = type_callback(nested_class_schema, nested_class_name)
-                                            if nested_type_code is not None:
-                                                output.append(nested_type_code)
+                                # Recursively process nested inline objects at any depth
+                                _process_nested_inline_objects(items, processed_types, type_callback, output)
                                 
                                 # Now add the inline object itself
                                 nested_schema = items.copy()
@@ -311,52 +335,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                     else:
                         item_type_name = f"{to_pascal_case(prop_name)}Item"
                     if item_type_name not in processed_types:
-                        # First, process nested objects within this array item inline object
-                        # This handles cases like url_citation within annotations array items
-                        for item_prop_name, item_prop_schema in items.get("properties", {}).items():
-                            if isinstance(item_prop_schema, dict) and item_prop_schema.get("type") == "object" and "properties" in item_prop_schema:
-                                item_nested_type_name = to_pascal_case(item_prop_name)
-                                if item_nested_type_name not in processed_types:
-                                    item_nested_schema = item_prop_schema.copy()
-                                    if "title" not in item_nested_schema:
-                                        item_nested_schema["title"] = item_nested_type_name
-                                    processed_types.add(item_nested_type_name)
-                                    item_nested_type_code = type_callback(item_nested_schema, item_nested_type_name)
-                                    if item_nested_type_code is not None:
-                                        output.append(item_nested_type_code)
-                        
-                        # Process composition keywords within array item inline object properties
-                        # This handles cases like logprobs with anyOf in choices items
-                        for item_prop_name, item_prop_schema in items.get("properties", {}).items():
-                            if isinstance(item_prop_schema, dict):
-                                for comp_key in ["anyOf", "oneOf", "allOf"]:
-                                    if comp_key in item_prop_schema:
-                                        for i, schema_option in enumerate(item_prop_schema[comp_key]):
-                                            if isinstance(schema_option, dict) and schema_option.get("type") == "object" and "properties" in schema_option:
-                                                # Generate a class for this inline object
-                                                option_type_name = f"{to_pascal_case(item_prop_name)}Option{i}" if i > 0 else to_pascal_case(item_prop_name)
-                                                if option_type_name not in processed_types:
-                                                    # Process nested objects within this option
-                                                    for nested_prop_name, nested_prop_schema in schema_option.get("properties", {}).items():
-                                                        if isinstance(nested_prop_schema, dict) and nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                                                            nested_class_name = to_pascal_case(nested_prop_name)
-                                                            if nested_class_name not in processed_types:
-                                                                nested_class_schema = nested_prop_schema.copy()
-                                                                if "title" not in nested_class_schema:
-                                                                    nested_class_schema["title"] = nested_class_name
-                                                                processed_types.add(nested_class_name)
-                                                                nested_type_code = type_callback(nested_class_schema, nested_class_name)
-                                                                if nested_type_code is not None:
-                                                                    output.append(nested_type_code)
-                                                    
-                                                    # Now add the inline object itself
-                                                    nested_schema = schema_option.copy()
-                                                    if "title" not in nested_schema:
-                                                        nested_schema["title"] = option_type_name
-                                                    processed_types.add(option_type_name)
-                                                    type_code = type_callback(nested_schema, option_type_name)
-                                                    if type_code is not None:
-                                                        output.append(type_code)
+                        # Recursively process nested inline objects at any depth
+                        _process_nested_inline_objects(items, processed_types, type_callback, output)
                         
                         # Now add the array item inline object itself
                         item_schema = items.copy()
@@ -397,19 +377,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                                 # Use property name + Item + index, not the composition keyword
                                 option_type_name = f"{to_pascal_case(prop_name)}Item{i}" if i > 0 else f"{to_pascal_case(prop_name)}Item"
                                 if option_type_name not in processed_types:
-                                    # First, process nested objects within this inline object
-                                    # and add them BEFORE the parent inline object
-                                    for nested_prop_name, nested_prop_schema in schema_option.get("properties", {}).items():
-                                        if isinstance(nested_prop_schema, dict) and nested_prop_schema.get("type") == "object" and "properties" in nested_prop_schema:
-                                            nested_class_name = to_pascal_case(nested_prop_name)
-                                            if nested_class_name not in processed_types:
-                                                nested_class_schema = nested_prop_schema.copy()
-                                                if "title" not in nested_class_schema:
-                                                    nested_class_schema["title"] = nested_class_name
-                                                processed_types.add(nested_class_name)
-                                                nested_type_code = type_callback(nested_class_schema, nested_class_name)
-                                                if nested_type_code is not None:
-                                                    output.append(nested_type_code)
+                                    # Recursively process nested inline objects at any depth
+                                    _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
                                     
                                     # Now add the inline object itself
                                     nested_schema = schema_option.copy()

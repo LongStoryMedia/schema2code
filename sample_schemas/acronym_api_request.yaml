@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: APIRequest
+description: A test schema with an acronym in the title
+type: object
+properties:
+  url:
+    type: string
+    description: The request URL
+  method:
+    type: string
+    description: HTTP method

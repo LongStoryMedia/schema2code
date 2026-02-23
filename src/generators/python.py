@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import tempfile
 from typing import Any, Dict, Optional, List, Set
 from ..util.resolver import SchemaRefResolver
 from ..util.writer import Writer
@@ -8,6 +9,7 @@ from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
     process_definitions_and_nested_types,
+    resolve_ref_type_name,
     to_pascal_case,
 )
 
@@ -96,7 +98,7 @@ class PythonGenerator:
                         ref_path = item["$ref"]
                         if not ref_path.startswith("#") and ref_resolver:
                             try:
-                                module_name = ref_path.replace(".yaml", "").replace(".json", "")
+                                module_name = ref_path.replace(".yaml", "").replace(".json", "").replace("-", "_")
                                 resolved = ref_resolver.resolve_ref(ref_path)
                                 
                                 if isinstance(resolved, dict):
@@ -151,7 +153,7 @@ class PythonGenerator:
                                 ref_path = allof_item["$ref"]
                                 if not ref_path.startswith("#") and ref_resolver:
                                     try:
-                                        module_name = ref_path.replace(".yaml", "").replace(".json", "")
+                                        module_name = ref_path.replace(".yaml", "").replace(".json", "").replace("-", "_")
                                         resolved = ref_resolver.resolve_ref(ref_path)
                                         
                                         if isinstance(resolved, dict):
@@ -189,28 +191,12 @@ class PythonGenerator:
         # Only import the main type from each referenced schema
         # Nested types should be referenced within their parent module as needed
         for ref_path in sorted(external_refs):
-            # Convert ref path to module and type name
-            import os
-            filename = os.path.basename(ref_path)
-            base_name = os.path.splitext(filename)[0]
-            
-            # Import type name in PascalCase (using the schema's actual title via resolver)
-            # Try to get the actual type name from the schema to handle acronyms correctly
-            actual_type_name = to_pascal_case(base_name)
-            
-            if ref_resolver:
-                try:
-                    resolved_schema = ref_resolver.resolve_ref(ref_path)
-                    if isinstance(resolved_schema, dict):
-                        # Use consistent to_pascal_case normalization for schema titles
-                        schema_title = resolved_schema.get("title", "")
-                        if schema_title:
-                            actual_type_name = to_pascal_case(schema_title)
-                except Exception:
-                    pass
-            
+            actual_type_name = resolve_ref_type_name(
+                ref_path, ref_resolver
+            )
+
             # Module name in snake_case
-            module_name = ref_path.replace(".yaml", "").replace(".json", "")
+            module_name = ref_path.replace(".yaml", "").replace(".json", "").replace("-", "_")
             
             import_stmt = f"from .{module_name} import {actual_type_name}"
             imports.append(import_stmt)
@@ -320,8 +306,8 @@ class PythonGenerator:
             for imp in imports
             if imp.startswith("from .") and " import " in imp
         ]
-        if root_title in imported_types:
-            # Skip generating the root type if it's imported
+        if root_title in imported_types or root_title in processed_types:
+            # Skip generating the root type if it's imported or already processed as a nested type
             pass
         else:
             root_type = PythonGenerator._generate_type(
@@ -796,13 +782,10 @@ class PythonGenerator:
                         if isinstance(item, dict):
                             if "$ref" in item:
                                 ref_path = item["$ref"]
-                                # Extract the type name from the reference
                                 if not ref_path.startswith("#"):
-                                    # External reference
-                                    import os
-                                    filename = os.path.basename(ref_path)
-                                    base_name = os.path.splitext(filename)[0]
-                                    type_name = to_pascal_case(base_name)
+                                    type_name = resolve_ref_type_name(
+                                        ref_path, ref_resolver
+                                    )
                                 else:
                                     # Internal reference (#/definitions/...)
                                     type_name = ref_path.split("/")[-1]
@@ -838,8 +821,8 @@ class PythonGenerator:
                 return "\n".join(output)
 
             for prop_name, prop_schema in properties.items():
-                # Sanitize property names that contain dots or hyphens
-                safe_prop_name = prop_name.replace(".", "_").replace("-", "_")
+                # Sanitize property names that contain dots, hyphens, or slashes
+                safe_prop_name = prop_name.replace(".", "_").replace("-", "_").replace("/", "_")
                 
                 field_type = PythonGenerator._get_python_type(
                     prop_schema, prop_name, use_pydantic, ref_resolver
@@ -951,18 +934,15 @@ class PythonGenerator:
                     for item in union_items:
                         if "$ref" in item:
                             ref_path = item["$ref"]
-                            # Extract the type name from the reference
                             if not ref_path.startswith("#"):
-                                # External reference
-                                import os
-                                filename = os.path.basename(ref_path)
-                                base_name = os.path.splitext(filename)[0]
-                                type_name = to_pascal_case(base_name)
+                                type_name = resolve_ref_type_name(
+                                    ref_path, ref_resolver
+                                )
                             else:
                                 # Internal reference (#/definitions/...)
                                 type_name = ref_path.split("/")[-1]
                             union_types.append(type_name)
-                    
+
                     # Return a type alias instead of a class
                     if union_types:
                         return f"{title} = Union[{', '.join(union_types)}]"
@@ -979,8 +959,8 @@ class PythonGenerator:
                 return "\n".join(output)
 
             for prop_name, prop_schema in properties.items():
-                # Sanitize property names that contain dots or hyphens
-                safe_prop_name = prop_name.replace(".", "_").replace("-", "_")
+                # Sanitize property names that contain dots, hyphens, or slashes
+                safe_prop_name = prop_name.replace(".", "_").replace("-", "_").replace("/", "_")
                 
                 field_type = PythonGenerator._get_python_type(
                     prop_schema, prop_name, use_pydantic, ref_resolver
@@ -1063,31 +1043,15 @@ class PythonGenerator:
         if "$ref" in prop_schema and ref_resolver:
             ref_path = prop_schema["$ref"]
             try:
-                # First try to resolve the referenced schema
-                ref_schema = ref_resolver.resolve_ref(ref_path)
-                if ref_schema and isinstance(ref_schema, dict):
-                    title = ref_schema.get("title", "")
-                    if title:
-                        return title.replace(" ", "")
-
-                # If we couldn't get a title, try looking up in external_ref_types
                 if not ref_path.startswith("#"):
-                    schema_path = os.path.join(
-                        os.path.dirname(ref_resolver.base_path), ref_path
+                    return resolve_ref_type_name(
+                        ref_path, ref_resolver
                     )
-                    if schema_path in ref_resolver.external_ref_types:
-                        return ref_resolver.external_ref_types[schema_path]
                 elif ref_path.startswith("#/definitions/"):
                     return ref_path.split("/")[-1]
 
-                # If still nothing, try to construct a type name from the file
-                if not ref_path.startswith("#"):
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]
-                    return "".join(x.capitalize() for x in base_name.split("_"))
-
                 # As a last resort, use the property name
-                return "".join(x.capitalize() for x in name.split("_"))
+                return to_pascal_case(name)
 
             except ValueError:
                 print(
@@ -1367,10 +1331,17 @@ class PythonGenerator:
                     init_content.append(f"    {class_name},")
                 init_content.append(")")
 
-        # Write the __init__.py file
+        # Write the __init__.py file atomically to prevent corruption from parallel writes
         init_file = os.path.join(model_dir, "__init__.py")
-        with open(init_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(init_content))
+        init_dir = os.path.dirname(init_file)
+        fd, tmp_path = tempfile.mkstemp(dir=init_dir, suffix=".tmp", prefix="__init__")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write("\n".join(init_content))
+            os.replace(tmp_path, init_file)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
         print(f"Generated __init__.py with type exports: {init_file}")
 

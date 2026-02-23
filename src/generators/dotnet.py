@@ -5,6 +5,7 @@ from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
     process_definitions_and_nested_types,
+    resolve_ref_type_name,
     to_pascal_case,
 )
 from ..util.resolver import SchemaRefResolver
@@ -238,23 +239,7 @@ class CSharpGenerator:
 
                 # Handle direct external references
                 if not ref_path.startswith("#"):
-                    # Get type name from resolver's mapping
-                    if hasattr(ref_resolver, "get_type_for_path"):
-                        type_name = ref_resolver.get_type_for_path(ref_path)
-                        if type_name:
-                            return type_name
-
-                    # Fallback to direct path lookup
-                    schema_path = os.path.join(
-                        os.path.dirname(ref_resolver.base_path), ref_path
-                    )
-                    if schema_path in ref_resolver.external_ref_types:
-                        return ref_resolver.external_ref_types[schema_path]
-
-                    # Final fallback: extract from filename
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]
-                    return to_pascal_case(base_name)
+                    return resolve_ref_type_name(ref_path, ref_resolver)
 
                 # Try to resolve the reference
                 ref_resolver.resolve_ref(ref_path)  # Just to verify it exists

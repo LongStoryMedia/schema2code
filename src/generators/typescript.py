@@ -8,6 +8,7 @@ from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
     process_definitions_and_nested_types,
+    resolve_ref_type_name,
     to_pascal_case,
 )
 
@@ -114,11 +115,7 @@ class TypeScriptGenerator:
                         if ref_path.startswith("#/definitions/"):
                             type_name = ref_path.split("/")[-1]
                         elif not ref_path.startswith("#"):
-                            import os
-
-                            filename = os.path.basename(ref_path)
-                            base_name = os.path.splitext(filename)[0]
-                            type_name = to_pascal_case(base_name)
+                            type_name = resolve_ref_type_name(ref_path, ref_res)
                         if type_name in processed_set:
                             continue
                     except Exception:
@@ -432,39 +429,20 @@ class TypeScriptGenerator:
                         )
                         if ext_path in ref_resolver.external_ref_types:
                             return ref_resolver.external_ref_types[ext_path]
-                        # Extract from filename as fallback
-                        filename = os.path.basename(ext_path)
-                        base_name = os.path.splitext(filename)[0]
-                        return "".join(x.capitalize() for x in base_name.split("_"))
+                        return resolve_ref_type_name(ext_path, ref_resolver)
 
                     # Regular definition reference
                     return def_name
 
                 # Handle direct external references
                 if not ref_path.startswith("#"):
-                    # Get type name from resolver's mapping
-                    if hasattr(ref_resolver, "get_type_for_path"):
-                        type_name = ref_resolver.get_type_for_path(ref_path)
-                        if type_name:
-                            return type_name
-
-                    # Fallback to direct path lookup
-                    schema_path = os.path.join(
-                        os.path.dirname(ref_resolver.base_path), ref_path
-                    )
-                    if schema_path in ref_resolver.external_ref_types:
-                        return ref_resolver.external_ref_types[schema_path]
-
-                    # Final fallback: extract from filename
-                    filename = os.path.basename(ref_path)
-                    base_name = os.path.splitext(filename)[0]
-                    return "".join(x.capitalize() for x in base_name.split("_"))
+                    return resolve_ref_type_name(ref_path, ref_resolver)
 
                 # Try to resolve the reference
                 resolved_schema = ref_resolver.resolve_ref(ref_path)
 
                 # If unable to extract name, fall back to property name
-                return "".join(x[0].upper() + x[1:] for x in name.split("_"))
+                return to_pascal_case(name)
 
             except ValueError as e:
                 print(f"Warning: {e}", file=sys.stderr)

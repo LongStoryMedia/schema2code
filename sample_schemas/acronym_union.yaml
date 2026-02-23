@@ -1,0 +1,6 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: APIMessage
+description: A union type referencing schemas with acronyms in titles
+anyOf:
+  - $ref: acronym_api_request.yaml
+  - $ref: acronym_api_response.yaml
