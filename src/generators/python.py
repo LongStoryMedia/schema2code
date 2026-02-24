@@ -127,7 +127,7 @@ class PythonGenerator:
                                             # Check for array items
                                             elif prop_schema.get("type") == "array" and "items" in prop_schema:
                                                 items = prop_schema["items"]
-                                                if isinstance(items, dict) and items.get("type") == "object":
+                                                if isinstance(items, dict) and items.get("type") == "object" and "properties" in items:
                                                     # Array items generate {PropName}Item type name
                                                     type_name = f"{to_pascal_case(prop_name)}Item"
                                                     nested_types.add(type_name)
@@ -224,7 +224,7 @@ class PythonGenerator:
             if use_pydantic:
                 imports.append("from enum import Enum")
                 imports.append(
-                    "from pydantic import BaseModel, Field, AnyUrl, EmailStr, constr"
+                    "from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, constr"
                 )
             else:
                 imports.append("from enum import Enum")
@@ -239,7 +239,7 @@ class PythonGenerator:
 
             if use_pydantic:
                 imports.append(
-                    "from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat"
+                    "from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat"
                 )
             else:
                 imports.append("from dataclasses import dataclass, field")
@@ -919,15 +919,17 @@ class PythonGenerator:
                     field_desc_formatted = field_desc.replace("\n", " ")
                     output.append(f'    """{field_desc_formatted}"""')
 
-            # Add Config class
+            # Add model_config using Pydantic v2 ConfigDict
             # Check if any property name shadows a Pydantic BaseModel attribute
             needs_protected_namespaces = any(
                 p == "schema" or p.startswith("model_")
                 for p in (properties or {})
             )
-            output.extend(["", "    class Config:", '        extra = "ignore"'])
+            config_parts = ['extra="ignore"']
             if needs_protected_namespaces:
-                output.append("        protected_namespaces = ()")
+                config_parts.append("protected_namespaces=()")
+            output.append("")
+            output.append(f"    model_config = ConfigDict({', '.join(config_parts)})")
         else:
             output = []
             
@@ -1246,10 +1248,11 @@ class PythonGenerator:
         """
         print(f"Generating __init__.py with type exports for models in {model_dir}...")
 
-        # Find all Python files (excluding __init__.py)
+        # Find all Python files (excluding __init__.py and files with hyphens
+        # since they cannot be valid Python module names and are stale artifacts)
         py_files = []
         for file in os.listdir(model_dir):
-            if file.endswith(".py") and file != "__init__.py":
+            if file.endswith(".py") and file != "__init__.py" and "-" not in file:
                 py_files.append(os.path.join(model_dir, file))
 
         # Create a dict to store all classes to export from each module
@@ -1302,6 +1305,11 @@ class PythonGenerator:
             "# This file was automatically generated to export all models for easy importing",
             "",
             "from __future__ import annotations",
+            "",
+            "# Suppress Pydantic warnings about fields shadowing BaseModel attributes",
+            "# (e.g. 'schema' field in OpenAI models shadows deprecated BaseModel.schema())",
+            "import warnings",
+            'warnings.filterwarnings("ignore", message=".*shadows an attribute in parent.*")',
             "",
         ]
 

@@ -145,6 +145,28 @@ def _process_nested_inline_objects(schema_dict, processed_types, type_callback, 
                     if type_code is not None:
                         output.append(type_code)
 
+        # Handle array items with composition keywords (anyOf/oneOf/allOf)
+        if prop_schema.get("type") == "array" and "items" in prop_schema:
+            items = prop_schema["items"]
+            if isinstance(items, dict):
+                for comp_key in ["anyOf", "oneOf", "allOf"]:
+                    if comp_key in items:
+                        for i, schema_option in enumerate(items[comp_key]):
+                            if isinstance(schema_option, dict) and schema_option.get("type") == "object" and "properties" in schema_option:
+                                if "title" in schema_option:
+                                    option_type_name = to_pascal_case(schema_option["title"])
+                                else:
+                                    option_type_name = f"{to_pascal_case(prop_name)}Item{i}" if i > 0 else f"{to_pascal_case(prop_name)}Item"
+                                if option_type_name not in processed_types:
+                                    _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
+                                    nested_schema = schema_option.copy()
+                                    if "title" not in nested_schema:
+                                        nested_schema["title"] = option_type_name
+                                    processed_types.add(option_type_name)
+                                    type_code = type_callback(nested_schema, option_type_name)
+                                    if type_code is not None:
+                                        output.append(type_code)
+
         # Handle composition keywords (anyOf/oneOf/allOf) with inline objects
         for comp_key in ["anyOf", "oneOf", "allOf"]:
             if comp_key in prop_schema:
@@ -179,6 +201,28 @@ def _process_nested_inline_objects(schema_dict, processed_types, type_callback, 
                                 type_code = type_callback(nested_schema, option_type_name)
                                 if type_code is not None:
                                     output.append(type_code)
+                    else:
+                        # Recurse into items that themselves contain composition keywords
+                        # (e.g., anyOf within anyOf) to find deeper inline objects
+                        for sub_comp_key in ["anyOf", "oneOf", "allOf"]:
+                            if sub_comp_key in schema_option:
+                                for j, sub_option in enumerate(schema_option[sub_comp_key]):
+                                    if not isinstance(sub_option, dict):
+                                        continue
+                                    if sub_option.get("type") == "object" and "properties" in sub_option:
+                                        if "title" in sub_option:
+                                            sub_type_name = to_pascal_case(sub_option["title"])
+                                        else:
+                                            sub_type_name = f"{to_pascal_case(prop_name)}Option{i}Option{j}" if j > 0 else f"{to_pascal_case(prop_name)}Option{i}"
+                                        if sub_type_name not in processed_types:
+                                            _process_nested_inline_objects(sub_option, processed_types, type_callback, output)
+                                            nested_schema = sub_option.copy()
+                                            if "title" not in nested_schema:
+                                                nested_schema["title"] = sub_type_name
+                                            processed_types.add(sub_type_name)
+                                            type_code = type_callback(nested_schema, sub_type_name)
+                                            if type_code is not None:
+                                                output.append(type_code)
 
 
 def process_definitions_and_nested_types(schema, processed_types, ref_resolver, type_callback):
@@ -261,6 +305,10 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                                 
                                 # Recursively process nested inline objects at any depth
                                 _process_nested_inline_objects(resolved_schema, processed_types, type_callback, output)
+                    
+                    # Also process the full composed item for nested inline objects in its properties
+                    # (handles anyOf/oneOf within properties of allOf-composed schemas)
+                    _process_nested_inline_objects(resolved_item, processed_types, type_callback, output)
     
     # Process nested types in properties
     for prop_name, prop_schema in schema.get("properties", {}).items():
@@ -340,6 +388,28 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                                 type_code = type_callback(nested_schema, option_type_name)
                                 if type_code is not None:
                                     output.append(type_code)
+                    else:
+                        # Recurse into items that themselves contain composition keywords
+                        # (e.g., anyOf within anyOf) to find deeper inline objects
+                        for sub_comp_key in ["anyOf", "oneOf", "allOf"]:
+                            if sub_comp_key in schema_option:
+                                for j, sub_option in enumerate(schema_option[sub_comp_key]):
+                                    if not isinstance(sub_option, dict):
+                                        continue
+                                    if sub_option.get("type") == "object" and "properties" in sub_option:
+                                        if "title" in sub_option:
+                                            sub_type_name = to_pascal_case(sub_option["title"])
+                                        else:
+                                            sub_type_name = f"{to_pascal_case(prop_name)}Option{i}Option{j}" if j > 0 else f"{to_pascal_case(prop_name)}Option{i}"
+                                        if sub_type_name not in processed_types:
+                                            _process_nested_inline_objects(sub_option, processed_types, type_callback, output)
+                                            nested_schema = sub_option.copy()
+                                            if "title" not in nested_schema:
+                                                nested_schema["title"] = sub_type_name
+                                            processed_types.add(sub_type_name)
+                                            type_code = type_callback(nested_schema, sub_type_name)
+                                            if type_code is not None:
+                                                output.append(type_code)
         
         # Process array items with anyOf/oneOf/allOf
         if prop_schema.get("type") == "array" and "items" in prop_schema:
@@ -392,8 +462,11 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                             # Check if this option is an inline object definition
                             if isinstance(schema_option, dict) and schema_option.get("type") == "object" and "properties" in schema_option:
                                 # Generate a class for this inline object
-                                # Use property name + Item + index, not the composition keyword
-                                option_type_name = f"{to_pascal_case(prop_name)}Item{i}" if i > 0 else f"{to_pascal_case(prop_name)}Item"
+                                # Use title if available, otherwise property name + Item + index
+                                if "title" in schema_option:
+                                    option_type_name = to_pascal_case(schema_option["title"])
+                                else:
+                                    option_type_name = f"{to_pascal_case(prop_name)}Item{i}" if i > 0 else f"{to_pascal_case(prop_name)}Item"
                                 if option_type_name not in processed_types:
                                     # Recursively process nested inline objects at any depth
                                     _process_nested_inline_objects(schema_option, processed_types, type_callback, output)
