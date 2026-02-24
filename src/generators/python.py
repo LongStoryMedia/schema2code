@@ -8,9 +8,11 @@ from ..util.writer import Writer
 from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
+    is_internal_ref,
     process_definitions_and_nested_types,
     resolve_ref_type_name,
     to_pascal_case,
+    type_name_from_ref,
 )
 
 
@@ -371,9 +373,9 @@ class PythonGenerator:
                 except ValueError:
                     pass  # Skip if we can't resolve the reference
 
-            elif ref_path.startswith("#/definitions/"):
+            elif is_internal_ref(ref_path):
                 # This is an internal reference
-                def_name = ref_path.split("/")[-1]
+                def_name = type_name_from_ref(ref_path)
                 if def_name in ref_resolver.definition_to_external_map:
                     # This definition points to an external schema
                     ext_path = ref_resolver.definition_to_external_map[def_name]
@@ -787,8 +789,8 @@ class PythonGenerator:
                                         ref_path, ref_resolver
                                     )
                                 else:
-                                    # Internal reference (#/definitions/...)
-                                    type_name = ref_path.split("/")[-1]
+                                    # Internal reference (#/definitions/... or #/components/schemas/...)
+                                    type_name = type_name_from_ref(ref_path)
                                 union_types.append(type_name)
                             elif "enum" in item:
                                 # Handle inline enum values
@@ -918,7 +920,14 @@ class PythonGenerator:
                     output.append(f'    """{field_desc_formatted}"""')
 
             # Add Config class
+            # Check if any property name shadows a Pydantic BaseModel attribute
+            needs_protected_namespaces = any(
+                p == "schema" or p.startswith("model_")
+                for p in (properties or {})
+            )
             output.extend(["", "    class Config:", '        extra = "ignore"'])
+            if needs_protected_namespaces:
+                output.append("        protected_namespaces = ()")
         else:
             output = []
             
@@ -939,8 +948,8 @@ class PythonGenerator:
                                     ref_path, ref_resolver
                                 )
                             else:
-                                # Internal reference (#/definitions/...)
-                                type_name = ref_path.split("/")[-1]
+                                # Internal reference (#/definitions/... or #/components/schemas/...)
+                                type_name = type_name_from_ref(ref_path)
                             union_types.append(type_name)
 
                     # Return a type alias instead of a class
@@ -1047,8 +1056,8 @@ class PythonGenerator:
                     return resolve_ref_type_name(
                         ref_path, ref_resolver
                     )
-                elif ref_path.startswith("#/definitions/"):
-                    return ref_path.split("/")[-1]
+                elif is_internal_ref(ref_path):
+                    return type_name_from_ref(ref_path)
 
                 # As a last resort, use the property name
                 return to_pascal_case(name)
@@ -1189,8 +1198,8 @@ class PythonGenerator:
                     )
                     if schema_path in ref_resolver.external_ref_types:
                         return f"List[{ref_resolver.external_ref_types[schema_path]}]"
-                elif ref_path.startswith("#/definitions/"):
-                    type_name = ref_path.split("/")[-1]
+                elif is_internal_ref(ref_path):
+                    type_name = type_name_from_ref(ref_path)
                     return f"List[{type_name}]"
 
             # If not a reference or couldn't resolve, use the default behavior

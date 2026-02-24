@@ -7,7 +7,9 @@ from ..util.schema_helpers import (
     to_pascal_case,
     enum_member_name,
     enum_member_desc,
+    is_internal_ref,
     process_definitions_and_nested_types,
+    type_name_from_ref,
 )
 
 
@@ -88,11 +90,11 @@ class ProtoGenerator:
                             base_name = file_name.rsplit(".", 1)[0]
                             proto_import = f"{base_name}.proto"
                             imports.append(proto_import)
-                    elif item_ref.startswith(
-                        "#/definitions/"
+                    elif is_internal_ref(
+                        item_ref
                     ):  # Internal reference to definition
                         # Check if this definition is itself a reference to an external file
-                        definition_name = item_ref.split("/")[-1]
+                        definition_name = type_name_from_ref(item_ref)
                         if definition_name in schema.get("definitions", {}):
                             def_schema = schema["definitions"][definition_name]
                             if isinstance(def_schema, dict) and "$ref" in def_schema:
@@ -193,9 +195,9 @@ class ProtoGenerator:
                         proto_file = f"{base_name}.proto"
                         imports.add(proto_file)
                 # Internal references to definitions that might point to external files
-                elif ref_path.startswith("#/definitions/"):
+                elif is_internal_ref(ref_path):
                     # Check if this definition is itself a reference to an external file
-                    definition_name = ref_path.split("/")[-1]
+                    definition_name = type_name_from_ref(ref_path)
                     if definition_name in schema.get("definitions", {}):
                         def_schema = schema["definitions"][definition_name]
                         if isinstance(def_schema, dict) and "$ref" in def_schema:

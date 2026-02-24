@@ -1,6 +1,23 @@
 # Helper functions for schema2code generators
 import os
 
+# All internal ref prefixes recognized by schema2code
+INTERNAL_REF_PREFIXES = ("#/definitions/", "#/components/schemas/")
+
+
+def is_internal_ref(ref_path: str) -> bool:
+    """Check if a $ref path is an internal reference (definitions or components/schemas)."""
+    return any(ref_path.startswith(prefix) for prefix in INTERNAL_REF_PREFIXES)
+
+
+def type_name_from_ref(ref_path: str) -> str:
+    """Extract the type name from any internal $ref path.
+
+    Handles both #/definitions/Foo and #/components/schemas/Foo formats.
+    Returns the last path segment (the type name).
+    """
+    return ref_path.split("/")[-1]
+
 
 def to_pascal_case(name: str) -> str:
     """Convert snake_case or lowerCamelCase to PascalCase."""
@@ -220,8 +237,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
                             try:
                                 resolved_schema = ref_resolver.resolve_ref(prop_schema["$ref"])
                                 ref_path = prop_schema["$ref"]
-                                if ref_path.startswith("#/definitions/"):
-                                    type_name = ref_path.split("/")[-1]
+                                if is_internal_ref(ref_path):
+                                    type_name = type_name_from_ref(ref_path)
                                 elif not ref_path.startswith("#"):
                                     type_name = resolve_ref_type_name(ref_path, ref_resolver)
                                 if type_name in processed_types:
@@ -253,8 +270,8 @@ def process_definitions_and_nested_types(schema, processed_types, ref_resolver, 
             try:
                 resolved_schema = ref_resolver.resolve_ref(prop_schema["$ref"])
                 ref_path = prop_schema["$ref"]
-                if ref_path.startswith("#/definitions/"):
-                    type_name = ref_path.split("/")[-1]
+                if is_internal_ref(ref_path):
+                    type_name = type_name_from_ref(ref_path)
                 elif not ref_path.startswith("#"):
                     type_name = resolve_ref_type_name(ref_path, ref_resolver)
                 if type_name in processed_types:

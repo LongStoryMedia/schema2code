@@ -4,9 +4,11 @@ from ..util.writer import Writer
 from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
+    is_internal_ref,
     process_definitions_and_nested_types,
     resolve_ref_type_name,
     to_pascal_case,
+    type_name_from_ref,
 )
 from ..util.resolver import SchemaRefResolver
 
@@ -233,8 +235,8 @@ class CSharpGenerator:
                 ref_path = prop_schema["$ref"]
 
                 # Handle definition references within the same file
-                if ref_path.startswith("#/definitions/"):
-                    def_name = ref_path.split("/")[-1]
+                if is_internal_ref(ref_path):
+                    def_name = type_name_from_ref(ref_path)
                     return def_name
 
                 # Handle direct external references

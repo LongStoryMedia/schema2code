@@ -2,6 +2,7 @@ import os
 from typing import Any, Dict, Set, Tuple, List
 
 from .loader import SchemaLoader
+from .schema_helpers import is_internal_ref, type_name_from_ref
 
 
 class SchemaRefResolver:
@@ -17,9 +18,10 @@ class SchemaRefResolver:
 
     def resolve_ref(self, ref_path: str) -> Dict[str, Any]:
         """Resolve a reference path to its schema definition"""
-        # Handle internal references to definitions
-        if ref_path.startswith("#/definitions/"):
-            def_name = ref_path.split("/")[-1]
+        # Handle internal references to definitions or components/schemas
+        if is_internal_ref(ref_path):
+            def_name = type_name_from_ref(ref_path)
+            # Look up in definitions
             if (
                 "definitions" in self.root_schema
                 and def_name in self.root_schema["definitions"]
@@ -114,8 +116,8 @@ class SchemaRefResolver:
                 return self.external_ref_types[ref_path]
 
         # Definition reference that may point to external file
-        elif ref_path.startswith("#/definitions/"):
-            def_name = ref_path.split("/")[-1]
+        elif is_internal_ref(ref_path):
+            def_name = type_name_from_ref(ref_path)
             if def_name in self.definition_to_external_map:
                 ext_path = self.definition_to_external_map[def_name]
                 return self.get_type_for_path(ext_path)

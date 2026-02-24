@@ -7,9 +7,11 @@ from ..util.writer import Writer
 from ..util.schema_helpers import (
     enum_member_name,
     enum_member_desc,
+    is_internal_ref,
     process_definitions_and_nested_types,
     resolve_ref_type_name,
     to_pascal_case,
+    type_name_from_ref,
 )
 
 
@@ -112,8 +114,8 @@ class TypeScriptGenerator:
                     try:
                         resolved_schema = ref_res.resolve_ref(prop_schema["$ref"])
                         ref_path = prop_schema["$ref"]
-                        if ref_path.startswith("#/definitions/"):
-                            type_name = ref_path.split("/")[-1]
+                        if is_internal_ref(ref_path):
+                            type_name = type_name_from_ref(ref_path)
                         elif not ref_path.startswith("#"):
                             type_name = resolve_ref_type_name(ref_path, ref_res)
                         if type_name in processed_set:
@@ -174,8 +176,8 @@ class TypeScriptGenerator:
                         except Exception:
                             pass
                     # Reference to a definition that might reference an external schema
-                    elif ref_path.startswith("#/definitions/"):
-                        def_name = ref_path.split("/")[-1]
+                    elif is_internal_ref(ref_path):
+                        def_name = type_name_from_ref(ref_path)
                         if (
                             hasattr(ref_resolver, "definition_to_external_map")
                             and def_name in ref_resolver.definition_to_external_map
@@ -416,8 +418,8 @@ class TypeScriptGenerator:
                 ref_path = prop_schema["$ref"]
 
                 # First, check definition to external mappings (for definition -> external chains)
-                if ref_path.startswith("#/definitions/"):
-                    def_name = ref_path.split("/")[-1]
+                if is_internal_ref(ref_path):
+                    def_name = type_name_from_ref(ref_path)
                     if (
                         hasattr(ref_resolver, "definition_to_external_map")
                         and def_name in ref_resolver.definition_to_external_map

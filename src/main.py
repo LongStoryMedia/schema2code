@@ -17,6 +17,7 @@ from .util.writer import Writer
 from .util.loader import SchemaLoader
 from .util.resolver import SchemaRefResolver
 from .util.schema_helpers import to_pascal_case
+from .util.openapi import is_openapi_document, extract_schemas, build_schema_for_type, schema_name_to_filename
 from .__version__ import __version__
 
 
@@ -106,6 +107,46 @@ def generate_types(
 
         # Add to output files
         output_files[ext_output_file] = ext_output
+
+    return output_files
+
+
+def generate_types_from_openapi(
+    openapi_data: Dict, language: str, schema_file: str, **kwargs
+) -> Dict[str, str]:
+    """
+    Generate types from an OpenAPI specification document.
+    Extracts all schemas from components.schemas and generates code for each.
+
+    Returns a dictionary mapping output files to their content.
+    """
+    output_dir = os.path.dirname(kwargs.get("output", "output"))
+
+    # Extract schemas and build definitions map
+    schemas_map, all_definitions = extract_schemas(openapi_data)
+
+    output_files = {}
+
+    for schema_name, schema_dict in schemas_map.items():
+        # Build a standalone schema with definitions for referenced types
+        standalone = build_schema_for_type(schema_name, schema_dict, all_definitions)
+
+        # Create a resolver with the standalone schema
+        ref_resolver = SchemaRefResolver(schema_file, standalone)
+
+        # Pre-process references
+        _preprocess_schema_references(ref_resolver, standalone)
+
+        # Generate code
+        output = _generate_single_schema(
+            standalone, language, schema_file, ref_resolver, is_main=True, **kwargs
+        )
+
+        # Determine output filename
+        filename = schema_name_to_filename(schema_name, language)
+        output_path = os.path.join(output_dir, filename) if output_dir else filename
+
+        output_files[output_path] = output
 
     return output_files
 
@@ -275,6 +316,11 @@ def main():
     parser.add_argument(
         "--go-package", help="Go package option for Protocol Buffer files"
     )
+    parser.add_argument(
+        "--openapi",
+        action="store_true",
+        help="Treat the input as an OpenAPI spec and generate types from components/schemas",
+    )
 
     args = parser.parse_args()
 
@@ -282,16 +328,31 @@ def main():
         loader = SchemaLoader(args.schema_file)
         schema_data = loader.load_schema()
 
-        output_files = generate_types(
-            schema_data,
-            args.language,
-            args.schema_file,
-            package_name=args.package,
-            namespace=args.namespace,
-            use_pydantic=not args.no_pydantic,
-            go_package=args.go_package,
-            output=args.output,
-        )
+        # Determine if this is an OpenAPI spec (explicit flag or auto-detect)
+        use_openapi = args.openapi or is_openapi_document(schema_data)
+
+        if use_openapi:
+            output_files = generate_types_from_openapi(
+                schema_data,
+                args.language,
+                args.schema_file,
+                package_name=args.package,
+                namespace=args.namespace,
+                use_pydantic=not args.no_pydantic,
+                go_package=args.go_package,
+                output=args.output,
+            )
+        else:
+            output_files = generate_types(
+                schema_data,
+                args.language,
+                args.schema_file,
+                package_name=args.package,
+                namespace=args.namespace,
+                use_pydantic=not args.no_pydantic,
+                go_package=args.go_package,
+                output=args.output,
+            )
 
         # Write all output files
         success = Writer.write_multiple_files(
